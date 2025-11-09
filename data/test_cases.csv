@@ -1,0 +1,11 @@
+bedrooms,bathrooms,square_feet,property_age_years,parking_spaces,pets_allowed,furnished,monthly_rent,security_deposit,lease_term_months,tenant_age,monthly_income,employment_verified,income_verified,credit_score,rental_history_years,previous_evictions,market_median_rent,days_to_rent_property,local_unemployment_rate,inflation_rate,country,city,property_type,employment_type,currency
+2,2,1000,2,1,1,1,18000,20000,12,28,70000,1,1,800,4,0,18000,8,3.0,4.5,India,Mumbai,Apartment,Full-time,INR
+1,1,450,45,0,0,0,4800,4800,2,19,12000,0,0,530,0,2,7000,90,16.0,15.0,India,Delhi,PG,Part-time,INR
+3,2,1400,1,2,1,1,165000,82500,24,45,1200000,1,1,870,18,0,180000,12,4.0,7.0,India,Bengaluru,Villa,CXO,INR
+1,1,450,8,0,0,1,22000,20000,6,23,45000,1,0,670,2,0,22000,16,7.0,7.0,India,Hyderabad,Studio,Freelance,INR
+2,2,1200,5,2,1,1,340000,120000,18,34,800000,1,1,810,10,0,320000,5,2.0,3.2,UAE,Dubai,Penthouse,CXO,AED
+1,1,800,9,1,0,0,20000,40000,11,44,0,0,0,560,3,0,18000,21,14.0,15.0,UAE,Dubai,Studio,Unemployed,USD
+2,1,590,25,0,1,1,35000,40000,18,36,40000,1,1,610,10,1,32000,27,10.0,12.0,India,Pune,Apartment,Self-employed,INR
+1,1,500,2,1,0,1,11700,10500,6,25,30000,1,0,660,1,0,10000,11,5.0,6.0,India,Noida,Independent House,Entry-level,INR
+2,2,1100,40,2,1,1,27000,30000,36,62,80000,1,1,777,36,0,25000,13,5.5,6.1,India,Chennai,Apartment,Retired,INR
+1,1,410,4,0,0,1,11000,11000,4,24,15000,1,0,610,0,2,14000,8,17.0,19.2,India,Guwahati,PG,Contract,INR
