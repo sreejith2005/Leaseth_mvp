@@ -14,9 +14,13 @@ This is a **FastAPI-based ML scoring API** for tenant risk assessment using a **
 
 **Critical**: Models are loaded into global variables (`V1_MODEL`, `V3_MODEL`) at startup in `scoring.py:load_models()`. Never reload during requests.
 
-- **Calibrated outputs**: Raw XGBoost probabilities are transformed using Platt scaling to ensure risk scores reflect real-world default likelihoods. Calibration coefficients are currently hardcoded but must be adjusted after validation for production trustworthiness.
-- **Explainability**: Design supports integration with SHAP, but `src/explainability.py` must be filled for full transparency.
-- **Fairness/Compliance**: Architecture allows for future disparate impact/fairness auditing by passing protected attributes and collecting audit logs. Fairness checks are not yet implemented.
+### Tech Stack
+- **Backend**: FastAPI + Uvicorn (ASGI)
+- **ML**: XGBoost 2.0 with Borderline-SMOTE, Platt scaling calibration
+- **Database**: SQLite (dev) → PostgreSQL (production)
+- **Auth**: JWT (bcrypt + PyJWT)
+- **Testing**: pytest + pytest-asyncio + httpx
+- **Frontend**: Vanilla HTML/CSS/JS (MVP) → React (future)
 
 ## Development Workflow
 
@@ -32,17 +36,71 @@ pip install -r requirements.txt
 uvicorn src.api:app --reload --host 0.0.0.0 --port 8000
 ```
 
+### Model Training Workflow
+**Two separate training scripts generate model artifacts:**
+
+1. **V1 Model (With Evictions)** - `main_v1_improved.py`:
+   ```powershell
+   python main_v1_improved.py
+   ```
+   - Trains on applicants **with eviction history** (`previous_evictions > 0`)
+   - Uses **BorderlineSMOTE** for class balancing (25% sampling strategy)
+   - Applies **extreme sample weighting**: 1-eviction = 0.20x, 2+ evictions = 0.08x
+   - Implements **monotonic constraints** (41 features total)
+   - Generates: `models/xgboost_model.pkl`, `models/feature_list.pkl`
+   - Hyperparameters: n_estimators=300, max_depth=5, learning_rate=0.03, reg_lambda=2.0
+
+2. **V3 Model (Financial Only)** - `main_v3_final.py`:
+   ```powershell
+   python main_v3_final.py
+   ```
+   - Trains on **financial features only** (no `previous_evictions`)
+   - Uses BorderlineSMOTE without custom weighting
+   - 36 features (excludes eviction-related columns)
+   - Generates: `models/xgboost_model_financial.pkl`, `models/feature_list_financial.pkl`
+   - Hyperparameters: n_estimators=300, max_depth=4, learning_rate=0.03, reg_lambda=2.5
+
+**Training Data**: Both scripts expect `data/processed_dataset.csv` with 50,000+ records.
+
+**Critical**: After training, restart API to reload models via `load_models()` in `scoring.py`.
+
 ### Testing
-- **No pytest tests exist yet** - `tests/` directory contains empty files
-- Manual testing via `/docs` (FastAPI Swagger UI)
-- For new tests: use `pytest-asyncio` for async endpoints, `httpx.AsyncClient` for requests
+- **Test framework**: pytest with async support (`pytest-asyncio`, `httpx.AsyncClient`)
+- **Test files**: `tests/test_api.py`, `tests/test_features.py`, `tests/test_scoring.py`
+- **Fixtures**: `tests/conftest.py` provides `test_db`, `test_client`, `test_engine`
+- **Run tests**: `pytest tests/ -v`
+- **Coverage**: `pytest --cov=src tests/`
+- **Manual testing**: FastAPI Swagger UI at `/docs` endpoint
 
 ### Database
 - **SQLite by default** (`leaseth.db` auto-created)
 - Init happens in `src/api.py:startup_event()` via `init_db()`
 - Models: `User`, `Application`, `Score`, `AuditLog`, `Feedback` (see `src/database.py`)
 - **No migrations** - schema changes require manual DB deletion/recreation
-- **Future:** Plan for PostgreSQL; models are compatible for upgrade.
+
+### PostgreSQL Migration (Production)
+**Planned for production deployment. SQLite is sufficient for MVP.**
+
+Migration steps:
+1. Update `.env`: `DATABASE_URL=postgresql://user:pass@localhost:5432/leaseth`
+2. Install PostgreSQL driver (already in requirements: `psycopg2-binary==2.9.9`)
+3. Engine auto-detects PostgreSQL via `config/database.py`:
+   ```python
+   if "sqlite" in settings.DATABASE_URL:
+       engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+   else:
+       engine = create_engine(DATABASE_URL, pool_pre_ping=True)  # PostgreSQL
+   ```
+4. Run `init_db()` to create schema
+5. Optional: Use Alembic for migrations (not yet implemented)
+
+**PostgreSQL benefits**:
+- Connection pooling for concurrent requests
+- Better performance for joins/aggregations
+- JSONB support for `raw_data` field
+- Full-text search capabilities
+
+**Warning**: No migration scripts exist. Schema changes require manual SQL or recreation.
 
 ## Critical Patterns
 
@@ -54,18 +112,26 @@ df['rent_to_income_ratio'] = df['monthly_rent'] / df['monthly_income']
 df['income_stability'] = ((df['employment_verified'] == 1) & 
                           (df['monthly_income'] >= df['monthly_rent'] * 3)).astype(int)
 df['verification_score'] = df['employment_verified'].astype(int) + df['income_verified'].astype(int)
+df['high_rent_burden'] = (df['rent_to_income_ratio'] > 0.4).astype(int)
+df['subprime_credit'] = (df['credit_score'] < 670).astype(int)
+df['tenant_stability_score'] = ((df['rental_history_years'] / 10).clip(0, 1) * 0.6 + 
+                                  (df['lease_term_months'] / 24).clip(0, 1) * 0.4)
 ```
-**When modifying**: Ensure model pickle files (`feature_list.pkl`, `feature_list_financial.pkl`) contain matching feature names. Features must be extracted in **exact order** matching training.
-
-- **Missing field defense**: Every engineered feature should be robust to missing columns via `.fillna()` defaults.
-- **Changing features**: Retrain both models and update pickled feature lists and hashes in `/models/` if you add or change any computed columns.
+**When modifying**: 
+- Ensure model pickle files (`feature_list.pkl`, `feature_list_financial.pkl`) contain matching feature names
+- Features must be extracted in **exact order** matching training
+- Constants defined in `config/constants.py` (e.g., `INCOME_STABILITY_THRESHOLD=3.0`, `RENT_BURDEN_THRESHOLD=0.4`, `SUBPRIME_CREDIT_THRESHOLD=670`)
+- Missing data defaults in `config/constants.py:DEFAULT_VALUES`
+- **Missing field defense**: Every engineered feature should be robust to missing columns via `.fillna()` defaults
+- **Changing features**: Retrain both models and update pickled feature lists and hashes in `/models/` if you add or change any computed columns
 
 ### Authentication Pattern
 - **Dual-token system**: 15-min access tokens + 7-day refresh tokens
 - JWT payload includes `user_id`, `username`, `type` (access/refresh)
 - Dependency injection: `get_current_user()` extracts user from `Authorization: Bearer <token>`
 - **Critical**: `src/auth.py:verify_password()` uses bcrypt with 12 rounds (see `.env.example`)
-- **Password reset flow and multi-user/role support** are not present.
+- User roles: `landlord`, `manager`, `admin` (defined in `config/constants.py:ROLES`)
+- **Password reset flow and multi-role permissions** are not yet implemented
 
 ### Request Tracing
 Every request gets a unique `request_id` via middleware:
@@ -81,7 +147,28 @@ calibrated = 1.0 / (1.0 + np.exp(-(a * prob + b)))
 ```
 Coefficients `a`, `b` differ per model (V1: 1.2/-0.3, V3: 1.1/-0.2). These are **placeholder values** - production should compute from validation set.
 
-- **Add an actual calibration step** as soon as validation stats are available; don't trust raw probabilities with real money or real tenants.
+### Rate Limiting Strategy (Planned)
+**SlowAPI integration for rate limiting** (not yet implemented):
+```python
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+
+@app.post("/api/v1/score")
+@limiter.limit("10/minute")  # 10 requests per minute per IP
+async def score_applicant(...):
+    ...
+```
+
+**Planned rate limits**:
+- Anonymous: 10 req/min per IP
+- Authenticated landlord: 100 req/min per user
+- Authenticated manager: 500 req/min per user
+- Admin: unlimited
+
+**Implementation location**: Add to `src/api.py` after MVP testing phase. SlowAPI already in `requirements.txt`.
 
 ## Configuration
 
@@ -90,16 +177,13 @@ Coefficients `a`, `b` differ per model (V1: 1.2/-0.3, V3: 1.1/-0.2). These are *
 - **All paths are relative** to project root (e.g., `./models/`, `./logs/`)
 - Change DB: set `DATABASE_URL` to PostgreSQL format `postgresql://user:pass@host:5432/db`
 - **Security**: Change `JWT_SECRET` in production (default is "change-me-in-production")
-- Always use environment variables for secrets, avoid committing secrets in code or repo.
 
 ### Model Files
-Expected in `models/` directory (currently empty):
+Expected in `models/` directory:
 - `xgboost_model.pkl` / `xgboost_model_financial.pkl` (XGBoost Booster objects)
 - `feature_list.pkl` / `feature_list_financial.pkl` (Python lists of feature names)
-- `model_metadata.json` (optional: document model version and hash)
-- **Model version/hashes** should also be persisted in DB for auditing; see `Score` model in `database.py`.
 
-**Without these files, API startup will fail.** Generate via separate training script.
+**Without these files, API startup will fail.** Generate via `main_v1_improved.py` and `main_v3_final.py`.
 
 ## API Contracts
 
@@ -111,33 +195,27 @@ Expected in `models/` directory (currently empty):
 - `monthly_rent`: must not exceed `2 * monthly_income` (Pydantic validator)
 - `on_time_payments_percent`: 0-100
 
-- **Extra:** Use Pydantic/validator methods for tight value checking on all numeric and enum fields (e.g., property_type).
-
 ### Response Format
 All endpoints use standardized wrappers (`src/utils.py`):
 ```python
-success_response(data, request_id)  # Returns { "status": "success", "data": ..., "request_id": ... }
-error_response(message, error_code, request_id)  # Returns {"status": "error", "error": ...}
+success_response(data, request_id)  # Returns {"success": true, "data": ..., "request_id": ...}
+error_response(message, error_code, request_id)  # Returns {"success": false, "error": ...}
 ```
 
 ### Risk Scoring Output
 - `risk_score`: 0-100 integer (derived from calibrated probability × 100)
-- `risk_category`: LOW (<30), MEDIUM (30-60), HIGH (>60)
+- `risk_category`: LOW (<30), MEDIUM (30-60), HIGH (>60) - thresholds in `config/constants.py`
 - `recommendation`: APPROVE, REQUEST_INFO, REJECT
 - `confidence_score`: Model certainty (0-1, computed from distance to 0.5 probability)
-
-- **Audit**: Each prediction record should persist model version, model hash, and feature version to `Score` table.
 
 ## Common Operations
 
 ### Adding New Features
 1. Update `src/features.py:create_new_features()` to compute new columns
-2. Retrain models with new feature set
+2. Retrain models with new feature set using `main_v1_improved.py` and `main_v3_final.py`
 3. Replace pickle files in `models/` directory
 4. Restart API to reload models
 5. **Critical**: Feature order in pickle must match computation order
-
-- Also update feature importance list and audit changes in `models/model_metadata.json`.
 
 ### Adding Endpoints
 Follow FastAPI patterns in `src/api.py`:
@@ -153,8 +231,7 @@ Check logs for model routing:
 logger.info(f"[{request_id}] Using V1 model (evictions: {previous_evictions})")
 logger.info(f"[{request_id}] Using V3 model (no evictions)")
 ```
-Verify feature extraction didn't fail (logs in `scoring.py:predict_and_score()`).
-- If model fails due to feature mismatch, expect a ValueError; check exact feature ordering in pickle versus new DataFrame columns.
+Verify feature extraction didn't fail (logs in `scoring.py:predict_and_score()`). If model fails due to feature mismatch, expect a ValueError; check exact feature ordering in pickle versus new DataFrame columns.
 
 ## Conventions
 
@@ -163,14 +240,45 @@ Verify feature extraction didn't fail (logs in `scoring.py:predict_and_score()`)
 - **DB sessions**: Always use `get_db()` dependency, never create SessionLocal() directly in endpoints
 - **Timestamps**: All DB timestamps use `datetime.utcnow()` (not timezone-aware)
 - **Error handling**: Log errors with request_id, then raise HTTPException or return JSONResponse
-- **Security**: All sensitive secrets go in `.env`; never hardcode any API keys or passwords.
+
+## Frontend Architecture
+
+### MVP Frontend (Current)
+- **Stack**: Vanilla HTML/CSS/JS (`frontend/index.html`, `frontend/styles.css`, `frontend/script.js`)
+- **Purpose**: Simple demo/test interface for MVP phase
+- **Features**: Form submission, real-time validation, result visualization
+- **API Integration**: Direct fetch calls to `http://localhost:8000/api/v1/score`
+
+### React Frontend (Future)
+- **Location**: `frontend/react/` subdirectory (to be scaffolded)
+- **Planned Tools**: Lovable/Bolt or manual setup with Vite/Next.js
+- **Features**: Professional UI, dashboard, batch uploads, analytics
+- **Migration**: Will coexist with vanilla frontend during transition
+
+## Model Explainability (Planned)
+
+### SHAP Integration
+- **Library**: `shap==0.43.0` already in requirements
+- **Implementation**: `src/explainability.py` (currently empty stub)
+- **Planned Features**:
+  - Feature importance visualization
+  - Individual prediction explanations
+  - Waterfall plots for stakeholder transparency
+  - Integration with `/api/v1/score` endpoint (optional explainability flag)
+
+### Usage Pattern (Future)
+```python
+# In src/explainability.py
+import shap
+explainer = shap.TreeExplainer(model)
+shap_values = explainer.shap_values(X)
+```
 
 ## Known Gaps
 
-- **No model files present** - API will fail at startup without `models/*.pkl`
-- **Empty test suite** - `tests/` directory scaffolded but not implemented
-- **Frontend incomplete** - `frontend/index.html` empty, React scaffold exists in `frontend/react/`
-- **No monitoring** - `src/monitoring.py` and `src/explainability.py` are empty stubs
+- **No model files present** - API will fail at startup without `models/*.pkl` (generate via training scripts)
+- **Frontend incomplete** - `frontend/index.html` has basic structure, React scaffold not yet created
+- **No monitoring** - `src/monitoring.py` empty (planned for metrics/alerting)
+- **Explainability stub** - `src/explainability.py` empty (SHAP integration planned)
 - **Hardcoded calibration** - Platt scaling coefficients need real validation data
-- **No explicit fairness/impact audit** - add disparate impact/fairness testing before US launch
-- **No batch/CSV scoring endpoint implemented yet;** see roadmap for phase 5
+- **No CSV parser** - `src/csv_parser.py` empty (planned for batch scoring)
