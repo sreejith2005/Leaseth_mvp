@@ -1,0 +1,135 @@
+{
+  "model_version": "v1_production",
+  "training_date": "2025-11-22T15:56:53.945211",
+  "model_type": "XGBoost + LightGBM Ensemble",
+  "target_variable": "default_flag",
+  "feature_count": 53,
+  "training_samples": 35020,
+  "test_samples": 7500,
+  "class_distribution": {
+    "0": 42321,
+    "1": 7679
+  },
+  "xgboost_metrics": {
+    "accuracy": 0.9649333333333333,
+    "precision": 0.8453768453768454,
+    "recall": 0.9444444444444444,
+    "f1": 0.8921689216892169,
+    "auc_roc": 0.9953876002065393
+  },
+  "lightgbm_metrics": {
+    "accuracy": 0.9626666666666667,
+    "precision": 0.8323170731707317,
+    "recall": 0.9479166666666666,
+    "f1": 0.8863636363636364,
+    "auc_roc": 0.9951677146782889
+  },
+  "xgboost_params": {
+    "n_estimators": 500,
+    "max_depth": 6,
+    "learning_rate": 0.05,
+    "subsample": 0.8,
+    "colsample_bytree": 0.8,
+    "reg_lambda": 1.0,
+    "gamma": 0.5,
+    "min_child_weight": 2,
+    "scale_pos_weight": 5.511264487563484,
+    "random_state": 42,
+    "eval_metric": "logloss",
+    "verbosity": 0
+  },
+  "lightgbm_params": {
+    "n_estimators": 500,
+    "max_depth": 8,
+    "learning_rate": 0.05,
+    "num_leaves": 31,
+    "reg_lambda": 1.0,
+    "scale_pos_weight": 5.511264487563484,
+    "random_state": 42,
+    "verbosity": -1
+  },
+  "top_10_features_xgb": [
+    {
+      "feature": "previous_evictions",
+      "importance": 0.22064562141895294
+    },
+    {
+      "feature": "credit_score",
+      "importance": 0.0986010953783989
+    },
+    {
+      "feature": "credit_x_verification",
+      "importance": 0.0832095816731453
+    },
+    {
+      "feature": "absolute_credit_score",
+      "importance": 0.06203785166144371
+    },
+    {
+      "feature": "verification_score",
+      "importance": 0.05000952258706093
+    },
+    {
+      "feature": "verification_x_income",
+      "importance": 0.04727540537714958
+    },
+    {
+      "feature": "rental_history_years",
+      "importance": 0.046036262065172195
+    },
+    {
+      "feature": "financial_responsibility_score",
+      "importance": 0.04402896761894226
+    },
+    {
+      "feature": "rent_burden_x_credit",
+      "importance": 0.0436108224093914
+    },
+    {
+      "feature": "tenant_history_score",
+      "importance": 0.03477299585938454
+    }
+  ],
+  "top_10_features_lgb": [
+    {
+      "feature": "absolute_credit_score",
+      "importance": 1677
+    },
+    {
+      "feature": "rental_history_years",
+      "importance": 1340
+    },
+    {
+      "feature": "credit_x_verification",
+      "importance": 883
+    },
+    {
+      "feature": "security_deposit_ratio",
+      "importance": 782
+    },
+    {
+      "feature": "financial_responsibility_score",
+      "importance": 716
+    },
+    {
+      "feature": "previous_evictions",
+      "importance": 684
+    },
+    {
+      "feature": "rent_burden_x_credit",
+      "importance": 682
+    },
+    {
+      "feature": "rent_per_sqft",
+      "importance": 558
+    },
+    {
+      "feature": "inflation_rate_float",
+      "importance": 528
+    },
+    {
+      "feature": "verification_x_income",
+      "importance": 499
+    }
+  ]
+}

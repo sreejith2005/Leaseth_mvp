@@ -1,6 +1,6 @@
 {
   "model_type": "XGBoost",
-  "training_date": "2025-12-05T00:30:29.411271",
+  "training_date": "2025-12-07T02:38:10.217253",
   "dataset": "clean_synthetic_tenant_data",
   "feature_count": 21,
   "train_samples": 40000,
@@ -14,7 +14,6 @@
     "auc": 0.7626365049019609
   },
   "test_metrics": {
-    "accuracy": 0.6457,
     "precision": 0.2518824386689337,
     "recall": 0.6913333333333334,
     "f1": 0.3692362471069966,
@@ -73,6 +72,7 @@
     "reg_alpha": 1.0,
     "min_child_weight": 5,
     "scale_pos_weight": 5.666666666666667,
+    "objective": "binary:logistic",
     "random_state": 42,
     "verbosity": 0
   }

@@ -54,7 +54,8 @@ def check_models_loaded() -> bool:
 
 def predict_and_score(
     engineered_features: Dict[str, Any],
-    request_id: str = None
+    request_id: str = None,
+    custom_thresholds: Dict[str, float] = None
 ) -> Dict[str, Any]:
     """
     Hybrid model routing and prediction
@@ -62,6 +63,8 @@ def predict_and_score(
     Args:
         engineered_features: Feature engineering output (from features.py)
         request_id: Request ID for logging
+        custom_thresholds: Optional custom thresholds for decision boundaries
+            Example: {"auto_approve": 0.30, "manual_review": 0.65, "auto_reject": 0.85}
     
     Returns:
         Prediction results with risk score and metadata
@@ -102,24 +105,21 @@ def predict_and_score(
         # Get prediction
         probability = model.predict_proba(X)[0][1]  # Probability of default
         
-        # Calibration: Convert raw probability to calibrated probability
-        # Using Platt scaling approximation
-        calibrated_probability = _calibrate_probability(probability, use_v1_model)
-        
-        # Convert to risk score (0-100)
-        risk_score = int(round(calibrated_probability * 100))
+        # Convert to risk score (0-100) - use raw probability directly
+        risk_score = int(round(probability * 100))
         risk_score = max(0, min(100, risk_score))  # Clip to 0-100
         
-        # Categorize risk
-        if risk_score < 30:
-            risk_category = "LOW"
-            recommendation = "APPROVE"
-        elif risk_score < 60:
-            risk_category = "MEDIUM"
-            recommendation = "REQUEST_INFO"
-        else:
-            risk_category = "HIGH"
-            recommendation = "REJECT"
+        # Three-tier decision system (cost-aware)
+        decision_result = _make_cost_aware_decision(
+            probability, 
+            risk_score,
+            engineered_features,
+            custom_thresholds
+        )
+        
+        risk_category = decision_result["risk_category"]
+        recommendation = decision_result["recommendation"]
+        decision_reasoning = decision_result["reasoning"]
         
         # Confidence score (model confidence)
         confidence_score = _calculate_confidence(probability)
@@ -137,10 +137,11 @@ def predict_and_score(
         return {
             "success": True,
             "default_probability": float(probability),
-            "calibrated_probability": float(calibrated_probability),
             "risk_score": risk_score,
             "risk_category": risk_category,
             "recommendation": recommendation,
+            "decision_tier": decision_result["decision_tier"],
+            "decision_reasoning": decision_reasoning,
             "confidence_score": float(confidence_score),
             "model_version": model_version,
             "model_hash": model_hash,
@@ -189,6 +190,131 @@ def _calculate_confidence(probability: float) -> float:
     return max(0.0, min(1.0, confidence))
 
 
+def _make_cost_aware_decision(
+    probability: float,
+    risk_score: int,
+    features: Dict[str, Any],
+    custom_thresholds: Dict[str, float] = None
+) -> Dict[str, str]:
+    """
+    Three-tier cost-aware decision system
+    Optimized for scenario where FP cost > FN cost
+    (Rejecting good tenants is MORE expensive than accepting bad ones)
+    
+    Tier 1: AUTO_APPROVE (prob < threshold)
+    Tier 2: MANUAL_REVIEW (threshold <= prob < high_threshold)
+    Tier 3: AUTO_REJECT (prob >= high_threshold)
+    
+    Args:
+        probability: Calibrated probability of default
+        risk_score: Risk score (0-100)
+        features: Engineered features for context
+        custom_thresholds: Optional custom thresholds
+    
+    Returns:
+        Dict with risk_category, recommendation, reasoning, and decision_tier
+    """
+    
+    # Use custom thresholds if provided, otherwise use defaults from constants
+    from config.constants import (
+        AUTO_APPROVE_THRESHOLD, 
+        MANUAL_REVIEW_THRESHOLD, 
+        AUTO_REJECT_THRESHOLD
+    )
+    
+    if custom_thresholds:
+        approve_threshold = custom_thresholds.get('auto_approve', AUTO_APPROVE_THRESHOLD)
+        manual_threshold = custom_thresholds.get('manual_review', MANUAL_REVIEW_THRESHOLD)
+        reject_threshold = custom_thresholds.get('auto_reject', AUTO_REJECT_THRESHOLD)
+    else:
+        approve_threshold = AUTO_APPROVE_THRESHOLD
+        manual_threshold = MANUAL_REVIEW_THRESHOLD
+        reject_threshold = AUTO_REJECT_THRESHOLD
+    
+    # Extract key features for context
+    credit_score = features.get('credit_score', 0)
+    monthly_income = features.get('monthly_income', 0)
+    monthly_rent = features.get('monthly_rent', 0)
+    previous_evictions = features.get('previous_evictions', 0)
+    rent_to_income_ratio = features.get('rent_to_income_ratio', 0)
+    
+    # Tier 1: AUTO_APPROVE
+    if probability < approve_threshold:
+        return {
+            "risk_category": "LOW",
+            "recommendation": "AUTO_APPROVE",
+            "decision_tier": "TIER_1_AUTO_APPROVE",
+            "reasoning": f"Low default probability ({probability:.1%}). Strong applicant profile."
+        }
+    
+    # Tier 3: AUTO_REJECT (only for extreme cases)
+    elif probability >= reject_threshold:
+        # Auto-reject if ANY of these severe conditions are met:
+        # - Multiple evictions (2+) with poor credit
+        # - Any evictions with very high probability (>85%)
+        # - No evictions but extremely high risk (>90%) and poor credit
+        
+        if previous_evictions >= 2 and credit_score < 600:
+            return {
+                "risk_category": "HIGH",
+                "recommendation": "REJECT",
+                "decision_tier": "TIER_3_AUTO_REJECT",
+                "reasoning": f"Very high default probability ({probability:.1%}). Multiple evictions and poor credit."
+            }
+        elif previous_evictions >= 1 and probability >= 0.85:
+            return {
+                "risk_category": "HIGH",
+                "recommendation": "REJECT",
+                "decision_tier": "TIER_3_AUTO_REJECT",
+                "reasoning": f"Extremely high default probability ({probability:.1%}) with eviction history."
+            }
+        elif previous_evictions == 0 and probability >= 0.90 and credit_score < 600:
+            return {
+                "risk_category": "HIGH",
+                "recommendation": "REJECT",
+                "decision_tier": "TIER_3_AUTO_REJECT",
+                "reasoning": f"Near-certain default ({probability:.1%}) with poor credit."
+            }
+        else:
+            # Downgrade to manual review if no strong negative indicators
+            return {
+                "risk_category": "HIGH",
+                "recommendation": "MANUAL_REVIEW",
+                "decision_tier": "TIER_2_MANUAL_REVIEW",
+                "reasoning": f"High probability ({probability:.1%}) but warrants human review."
+            }
+    
+    # Tier 2: MANUAL_REVIEW
+    else:
+        # Sub-categorize within manual review
+        mid_point = (approve_threshold + manual_threshold) / 2
+        
+        if probability < mid_point:
+            # Lower risk manual review
+            return {
+                "risk_category": "LOW-MEDIUM",
+                "recommendation": "MANUAL_REVIEW",
+                "decision_tier": "TIER_2_MANUAL_REVIEW",
+                "reasoning": f"Moderate probability ({probability:.1%}). Recommend approval with income verification."
+            }
+        elif probability < manual_threshold:
+            # Mid-range manual review
+            return {
+                "risk_category": "MEDIUM",
+                "recommendation": "MANUAL_REVIEW",
+                "decision_tier": "TIER_2_MANUAL_REVIEW",
+                "reasoning": f"Elevated risk ({probability:.1%}). Consider co-signer or increased deposit."
+            }
+        else:
+            # Higher risk manual review
+            return {
+                "risk_category": "MEDIUM-HIGH",
+                "recommendation": "MANUAL_REVIEW",
+                "decision_tier": "TIER_2_MANUAL_REVIEW",
+                "reasoning": f"High probability ({probability:.1%}). Review financial history and references carefully."
+            }
+
+
 def get_feature_importance(is_v1: bool = True) -> Dict[str, float]:
     """Get feature importance from model"""
     try:
@@ -206,3 +332,78 @@ def get_feature_importance(is_v1: bool = True) -> Dict[str, float]:
     except Exception as e:
         logger.error(f"Error getting feature importance: {e}")
         return {}
+
+
+def calculate_dynamic_thresholds(
+    fp_cost: float = 5000.0,
+    fn_cost: float = 3000.0,
+    vacancy_rate: float = 0.05,
+    application_volume: str = "normal"
+) -> Dict[str, float]:
+    """
+    Calculate dynamic thresholds based on business context
+    
+    Args:
+        fp_cost: Cost of rejecting a good tenant (default: $5,000 - lost rent)
+        fn_cost: Cost of accepting a bad tenant (default: $3,000 - eviction, etc.)
+        vacancy_rate: Current market vacancy rate (0-1)
+        application_volume: "high", "normal", or "low"
+    
+    Returns:
+        Dict with auto_approve, manual_review, and auto_reject thresholds
+    """
+    from config.constants import (
+        AUTO_APPROVE_THRESHOLD,
+        MANUAL_REVIEW_THRESHOLD,
+        AUTO_REJECT_THRESHOLD
+    )
+    
+    # Start with base thresholds
+    approve = AUTO_APPROVE_THRESHOLD
+    manual = MANUAL_REVIEW_THRESHOLD
+    reject = AUTO_REJECT_THRESHOLD
+    
+    # Adjust based on cost ratio
+    cost_ratio = fp_cost / fn_cost
+    
+    if cost_ratio > 1.5:  # FP cost significantly higher
+        # Be more lenient (approve more, reject less)
+        approve += 0.05
+        manual += 0.05
+        reject += 0.05
+    elif cost_ratio < 0.7:  # FN cost higher
+        # Be more strict (approve less, reject more)
+        approve -= 0.05
+        manual -= 0.05
+        reject -= 0.05
+    
+    # Adjust based on vacancy rate
+    if vacancy_rate > 0.10:  # High vacancy - need tenants
+        approve += 0.05
+        manual += 0.05
+    elif vacancy_rate < 0.03:  # Low vacancy - can be selective
+        approve -= 0.05
+        manual -= 0.05
+    
+    # Adjust based on application volume
+    if application_volume == "high":
+        # Lots of applicants - can be more selective
+        approve -= 0.03
+        manual -= 0.03
+    elif application_volume == "low":
+        # Few applicants - need to be more lenient
+        approve += 0.03
+        manual += 0.03
+    
+    # Ensure thresholds stay in valid ranges
+    approve = max(0.20, min(0.50, approve))
+    manual = max(0.50, min(0.80, manual))
+    reject = max(0.75, min(0.95, reject))
+    
+    return {
+        "auto_approve": round(approve, 2),
+        "manual_review": round(manual, 2),
+        "auto_reject": round(reject, 2),
+        "cost_ratio": round(cost_ratio, 2),
+        "reasoning": f"FP cost ${fp_cost:,.0f} vs FN cost ${fn_cost:,.0f} (ratio: {cost_ratio:.2f})"
+    }

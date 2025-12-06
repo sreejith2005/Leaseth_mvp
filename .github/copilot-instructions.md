@@ -60,7 +60,7 @@ uvicorn src.api:app --reload --host 0.0.0.0 --port 8000
    - Generates: `models/xgboost_model_financial.pkl`, `models/feature_list_financial.pkl`
    - Hyperparameters: n_estimators=300, max_depth=4, learning_rate=0.03, reg_lambda=2.5
 
-**Training Data**: Both scripts expect `data/processed_dataset.csv` with 50,000+ records.
+**Training Data**: Both scripts expect `C:\Users\LENOVO\leaseth_mvp\data\leaseth_tenant_risk_dataset_v2_50k.csv` with 50,000+ records.
 
 **Critical**: After training, restart API to reload models via `load_models()` in `scoring.py`.
 

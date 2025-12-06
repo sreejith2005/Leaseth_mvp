@@ -7,10 +7,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, validator
 from sqlalchemy.orm import Session
-from typing import List, Optional
+from typing import List, Optional, Dict
 from datetime import datetime
 import logging
 import time
+import pandas as pd
 
 from src.config import settings, setup_logging
 from src.database import SessionLocal, init_db, User, Application, Score, AuditLog, get_db
@@ -98,6 +99,12 @@ class ApplicantRequest(BaseModel):
     # Market context
     local_unemployment_rate: float = Field(default=5.0, ge=0)
     inflation_rate: float = Field(default=5.0, ge=0)
+    
+    # Optional custom thresholds for decision system
+    custom_thresholds: Optional[Dict[str, float]] = Field(
+        default=None,
+        description="Optional custom decision thresholds. Keys: auto_approve, manual_review, auto_reject"
+    )
     
     @validator('monthly_rent')
     def validate_rent(cls, v, values):
@@ -316,8 +323,12 @@ async def score_applicant(
         df = pd.DataFrame([applicant_dict])
         df_feat = create_new_features(df)
         
-        # Get prediction
-        prediction = predict_and_score(df_feat.iloc[0].to_dict(), request_id=request_id)
+        # Get prediction with optional custom thresholds
+        prediction = predict_and_score(
+            df_feat.iloc[0].to_dict(), 
+            request_id=request_id,
+            custom_thresholds=applicant.custom_thresholds
+        )
         
         # Store in database
         db_app = Application(
