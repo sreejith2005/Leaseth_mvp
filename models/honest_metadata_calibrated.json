@@ -1,0 +1,41 @@
+{
+  "model_type": "XGBoost + Isotonic Calibration",
+  "training_date": "2025-12-05T00:16:31.671277",
+  "dataset": "clean_synthetic_tenant_data",
+  "calibration_method": "isotonic",
+  "feature_count": 21,
+  "train_samples": 30000,
+  "calibration_samples": 10000,
+  "test_samples": 10000,
+  "default_rate": 0.15,
+  "base_metrics": {
+    "auc": 0.7217238039215685,
+    "brier": 0.20852890490960818,
+    "log_loss": 0.5985548772435554,
+    "accuracy": 0.6497,
+    "precision": 0.2520425847982174,
+    "recall": 0.6786666666666666
+  },
+  "calibrated_metrics": {
+    "auc": 0.7214216078431374,
+    "brier": 0.11798635594262014,
+    "log_loss": 0.3827395739320353,
+    "accuracy": 0.85,
+    "precision": 0.0,
+    "recall": 0.0
+  },
+  "brier_improvement": 0.09054254896698805,
+  "hyperparameters": {
+    "n_estimators": 200,
+    "max_depth": 4,
+    "learning_rate": 0.05,
+    "subsample": 0.8,
+    "colsample_bytree": 0.8,
+    "reg_lambda": 5.0,
+    "reg_alpha": 1.0,
+    "min_child_weight": 5,
+    "scale_pos_weight": 5.666666666666667,
+    "random_state": 42,
+    "verbosity": 0
+  }
+}

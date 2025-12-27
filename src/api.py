@@ -7,10 +7,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, validator
 from sqlalchemy.orm import Session
-from typing import List, Optional
+from typing import List, Optional, Dict
 from datetime import datetime
 import logging
 import time
+import pandas as pd
 
 from src.config import settings, setup_logging
 from src.database import SessionLocal, init_db, User, Application, Score, AuditLog, get_db
@@ -43,12 +44,11 @@ app.add_middleware(
 )
 
 # Add request ID middleware
-class RequestIDMiddleware:
+from starlette.middleware.base import BaseHTTPMiddleware
+
+class RequestIDMiddleware(BaseHTTPMiddleware):
     """Middleware to add request ID to all requests"""
-    def __init__(self, app):
-        self.app = app
-    
-    async def __call__(self, request: Request, call_next):
+    async def dispatch(self, request: Request, call_next):
         request_id = generate_request_id()
         request.state.request_id = request_id
         
@@ -73,7 +73,7 @@ class ApplicantRequest(BaseModel):
     applicant_id: str = Field(..., min_length=1, max_length=100)
     name: str = Field(..., min_length=1, max_length=255)
     age: int = Field(..., ge=18, le=120)
-    employment_status: str = Field(..., regex="^(employed|self-employed|unemployed)$")
+    employment_status: str = Field(..., pattern="^(employed|self-employed|unemployed)$")
     employment_verified: bool = False
     income_verified: bool = False
     
@@ -100,6 +100,12 @@ class ApplicantRequest(BaseModel):
     local_unemployment_rate: float = Field(default=5.0, ge=0)
     inflation_rate: float = Field(default=5.0, ge=0)
     
+    # Optional custom thresholds for decision system
+    custom_thresholds: Optional[Dict[str, float]] = Field(
+        default=None,
+        description="Optional custom decision thresholds. Keys: auto_approve, manual_review, auto_reject"
+    )
+    
     @validator('monthly_rent')
     def validate_rent(cls, v, values):
         if 'monthly_income' in values and v > values['monthly_income'] * 2:
@@ -116,7 +122,7 @@ class LoginRequest(BaseModel):
 class RegisterRequest(BaseModel):
     """User registration request"""
     username: str = Field(..., min_length=3, max_length=50)
-    email: str = Field(..., regex="^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$")
+    email: str = Field(..., pattern="^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$")
     password: str = Field(..., min_length=8)
     full_name: Optional[str] = Field(None, max_length=255)
 
@@ -178,8 +184,9 @@ async def health_check():
     """Health check endpoint"""
     try:
         # Check database
+        from sqlalchemy import text
         db = SessionLocal()
-        db.execute("SELECT 1")
+        db.execute(text("SELECT 1"))
         db.close()
         
         # Try to score test data
@@ -227,7 +234,7 @@ async def register(request: RegisterRequest, db: Session = Depends(get_db)):
             username=request.username,
             email=request.email,
             password=request.password,
-            full_name=request.full_name
+            full_name=request.full_name or ""
         )
         
         logger.info(f"[{request_id}] User registered: {user.username}")
@@ -258,12 +265,12 @@ async def login(request: LoginRequest, db: Session = Depends(get_db)):
             logger.warning(f"[{request_id}] Failed login: {request.username}")
             raise HTTPException(status_code=401, detail="Invalid credentials")
         
-        access_token = create_access_token(user.id, user.username)
-        refresh_token = create_refresh_token(user.id, user.username)
+        access_token = create_access_token(user.id, user.username)  # type: ignore
+        refresh_token = create_refresh_token(user.id, user.username)  # type: ignore
         
         # Log to audit trail
         audit = AuditLog(
-            user_id=user.id,
+            user_id=user.id,  # type: ignore
             action="LOGIN",
             resource_id=str(user.id),
             resource_type="user"
@@ -294,14 +301,11 @@ async def login(request: LoginRequest, db: Session = Depends(get_db)):
 async def score_applicant(
     applicant: ApplicantRequest,
     request: Request,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(lambda token: get_current_user(
-        token.headers.get("Authorization", "").replace("Bearer ", ""),
-        SessionLocal()
-    ) if "Authorization" in dict(request.headers) else None)
+    db: Session = Depends(get_db)
 ):
     """Score single applicant"""
     request_id = request.state.request_id
+    current_user = None  # TODO: Add auth dependency when needed
     
     try:
         # Validate input
@@ -319,8 +323,12 @@ async def score_applicant(
         df = pd.DataFrame([applicant_dict])
         df_feat = create_new_features(df)
         
-        # Get prediction
-        prediction = predict_and_score(df_feat.iloc[0].to_dict(), request_id=request_id)
+        # Get prediction with optional custom thresholds
+        prediction = predict_and_score(
+            df_feat.iloc[0].to_dict(), 
+            request_id=request_id,
+            custom_thresholds=applicant.custom_thresholds
+        )
         
         # Store in database
         db_app = Application(

@@ -1,0 +1,9 @@
+setuptools>=65.0.0
+wheel
+fastapi
+uvicorn[standard]
+pydantic
+xgboost
+pandas
+numpy
+scikit-learn
