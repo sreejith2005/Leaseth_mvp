@@ -4,6 +4,8 @@
 
 ---
 
+**SKIP TO STEP 5 - LINE 127**   
+
 ## 🎯 WHY RAILWAY?
 
 | Feature | Railway | Render (Free) | Fly.io |
@@ -126,6 +128,7 @@ git push origin main
 ### **STEP 5: Deploy on Railway**
 
 1. **Go to Railway Dashboard**: https://railway.app/dashboard
+**Select github app**
 
 2. **Click "New Project"**
 
