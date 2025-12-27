@@ -45,7 +45,7 @@ python simple_api.py
 - Starts API on port 8001
 - Ready to accept requests
 
-**Test the API**:
+**Test the API (DEPRECATED)**:
 ```powershell
 # In a new terminal, run test script
 python test_lovable_api.py
@@ -118,7 +118,7 @@ git push origin new_stratergies
 - **Name**: `leaseth-mvp`
 - **Region**: Choose closest to you
 - **Branch**: `new_stratergies`
-- **Build Command**: `pip install -r requirements_render.txt`
+- **Build Command**: `pip install --upgrade pip setuptools wheel && pip install -r requirements_render.txt`
 - **Start Command**: (Auto-detected from Procfile)
   ```
   uvicorn simple_api:app --host 0.0.0.0 --port $PORT
