@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install)",
+      "Bash(npm run build:*)",
+      "Bash(timeout 8 npm run dev)",
+      "Bash(git log:*)",
+      "Bash(python:*)",
+      "Bash(ls -la \"C:\\\\Users\\\\LENOVO\\\\Downloads\\\\leaseth_mvp_working_backup_3\\\\frontend\\\\src\\\\data\"\" 2>&1 || echo \"Directory doesn 't exist or is empty \")"
+    ]
+  }
+}

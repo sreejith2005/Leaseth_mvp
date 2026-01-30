@@ -84,8 +84,15 @@ temp/
 node_modules/
 npm-debug.log
 yarn-error.log
+package-lock.json
 
-# React
+# Frontend builds
+frontend/node_modules/
+frontend/dist/
+frontend/build/
+frontend/.vercel
+
+# Legacy frontend
 frontend/react/node_modules/
 frontend/react/build/
 frontend/react/dist/
