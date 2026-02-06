@@ -1,7 +1,7 @@
 import { ApplicantInput, ScoringResponse, StoredApplicant } from '../types'
 
 const API_URL = import.meta.env.VITE_API_URL || 'https://sreejithm-leaseth-mvp.hf.space'
-const LOCAL_STORAGE_KEY = 'leaseth_assessments'
+const LOCAL_STORAGE_KEY = 'leaseth_submissions'
 
 export class ApiError extends Error {
   constructor(public status: number, message: string) {

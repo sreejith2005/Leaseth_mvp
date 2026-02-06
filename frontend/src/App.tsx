@@ -5,6 +5,7 @@ import Results from './pages/Results'
 import Dashboard from './pages/Dashboard'
 import ErrorBoundary from './components/ErrorBoundary'
 import Toast from './components/Toast'
+import { CurrencyProvider } from './contexts/CurrencyContext'
 import { useState } from 'react'
 import { ScoringResponse, ApplicantInput } from './types'
 
@@ -20,42 +21,44 @@ function App() {
 
   return (
     <ErrorBoundary>
-      <Router>
-        <div className="min-h-screen" style={{ backgroundColor: 'var(--color-cream, #faf8f5)' }}>
-          <Routes>
-            <Route path="/" element={<Landing />} />
-            <Route
-              path="/score"
-              element={
-                <ScoringForm
-                  onResult={(result, input) => {
-                    setLastResult(result)
-                    setLastInput(input)
-                  }}
-                  showToast={showToast}
-                />
-              }
-            />
-            <Route
-              path="/results"
-              element={
-                <Results
-                  result={lastResult}
-                  input={lastInput}
-                />
-              }
-            />
-            <Route path="/dashboard" element={<Dashboard showToast={showToast} />} />
-          </Routes>
-          {toast && (
-            <Toast
-              message={toast.message}
-              type={toast.type}
-              onClose={() => setToast(null)}
-            />
-          )}
-        </div>
-      </Router>
+      <CurrencyProvider>
+        <Router>
+          <div className="min-h-screen" style={{ backgroundColor: 'var(--color-cream, #faf8f5)' }}>
+            <Routes>
+              <Route path="/" element={<Landing />} />
+              <Route
+                path="/score"
+                element={
+                  <ScoringForm
+                    onResult={(result, input) => {
+                      setLastResult(result)
+                      setLastInput(input)
+                    }}
+                    showToast={showToast}
+                  />
+                }
+              />
+              <Route
+                path="/results"
+                element={
+                  <Results
+                    result={lastResult}
+                    input={lastInput}
+                  />
+                }
+              />
+              <Route path="/dashboard" element={<Dashboard showToast={showToast} />} />
+            </Routes>
+            {toast && (
+              <Toast
+                message={toast.message}
+                type={toast.type}
+                onClose={() => setToast(null)}
+              />
+            )}
+          </div>
+        </Router>
+      </CurrencyProvider>
     </ErrorBoundary>
   )
 }

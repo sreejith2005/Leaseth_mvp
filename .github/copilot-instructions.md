@@ -243,17 +243,39 @@ Verify feature extraction didn't fail (logs in `scoring.py:predict_and_score()`)
 
 ## Frontend Architecture
 
-### MVP Frontend (Current)
-- **Stack**: Vanilla HTML/CSS/JS (`frontend/index.html`, `frontend/styles.css`, `frontend/script.js`)
-- **Purpose**: Simple demo/test interface for MVP phase
-- **Features**: Form submission, real-time validation, result visualization
-- **API Integration**: Direct fetch calls to `http://localhost:8000/api/v1/score`
+### React + Vite Frontend (Current)
+- **Stack**: React 18, Vite 5, TypeScript, TailwindCSS, Lucide icons, Recharts, Zod validation
+- **Location**: `frontend/` directory
+- **Pages**: Landing (`/`), ScoringForm (`/score`), Results (`/results`), Dashboard (`/dashboard`)
+- **API Integration**: `frontend/src/services/api.ts` — uses `import.meta.env.VITE_API_URL`
+- **Public API URL**: `https://sreejithm-leaseth-mvp.hf.space`
 
-### React Frontend (Future)
-- **Location**: `frontend/react/` subdirectory (to be scaffolded)
-- **Planned Tools**: Lovable/Bolt or manual setup with Vite/Next.js
-- **Features**: Professional UI, dashboard, batch uploads, analytics
-- **Migration**: Will coexist with vanilla frontend during transition
+### Environment-Based API URL Switching (IMPORTANT)
+**The frontend automatically switches between local and production API URLs. No manual code changes needed.**
+
+| Command | Env file loaded | `VITE_API_URL` resolves to | Use case |
+|---|---|---|---|
+| `npm run dev` | `.env.development` (gitignored) | `http://localhost:8000` | Local testing |
+| `npm run build` | `.env.production` (committed) | `https://sreejithm-leaseth-mvp.hf.space` | Production deploy |
+
+**How it works**: Vite automatically loads the correct `.env.*` file based on the mode:
+- `frontend/.env.development` → local dev only, **gitignored** (never pushed to GitHub)
+- `frontend/.env.production` → production URL, **committed** (pushed to GitHub)
+- `frontend/.env.example` → documentation for other devs
+- `frontend/src/services/api.ts` reads: `import.meta.env.VITE_API_URL || 'https://sreejithm-leaseth-mvp.hf.space'`
+
+**NEVER hardcode `localhost` in source files.** Always use `import.meta.env.VITE_API_URL`.
+
+### Multi-Currency Support (Global)
+The frontend supports 18 currencies with auto-detection from browser locale:
+- **Utility**: `frontend/src/utils/currency.ts` — `CurrencyConfig` type, `SUPPORTED_CURRENCIES` map, `formatAmount()` via `Intl.NumberFormat`, `detectCurrencyFromLocale()`
+- **Context**: `frontend/src/contexts/CurrencyContext.tsx` — `CurrencyProvider` wraps app, `useCurrency()` hook provides `formatCurrency()`, `symbol`, `currencyCode`, `setCurrency()`
+- **Selector**: `frontend/src/components/CurrencySelector.tsx` — dropdown with flag + code + name
+- **Persistence**: Selected currency saved to `localStorage` key `leaseth_currency`
+- **Supported**: USD, EUR, GBP, AED, SAR, CHF, CAD, AUD, INR, JPY, SGD, SEK, NOK, DKK, PLN, BRL, MXN, ZAR
+- **API field**: `currency` (optional string) added to `ApplicantInput` type, sent with scoring requests
+- **Formatting**: All monetary display uses `useCurrency().formatCurrency(amount)` — **never hardcode ₹, $, or any currency symbol**
+- **Cities**: Global city list (London, Dubai, New York, Berlin, Paris, Toronto, Sydney, Singapore, etc.) — no India-only cities
 
 ## Model Explainability (Planned)
 

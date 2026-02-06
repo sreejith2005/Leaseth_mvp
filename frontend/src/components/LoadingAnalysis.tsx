@@ -1,18 +1,18 @@
 import { useState, useEffect } from 'react'
-import { Brain, CreditCard, History, Calculator, Sparkles } from 'lucide-react'
+import { Building2, CreditCard, History, Calculator, Sparkles } from 'lucide-react'
 
 const analysisSteps = [
-  { icon: CreditCard, text: 'Checking credit history...', detail: 'CIBIL score analysis' },
-  { icon: Brain, text: 'Evaluating employment...', detail: 'Income stability check' },
-  { icon: History, text: 'Reviewing rental history...', detail: 'Payment patterns' },
-  { icon: Calculator, text: 'Calculating risk score...', detail: 'ML model inference' },
+  { icon: Building2, text: 'Evaluating rental income...', detail: 'Property & lease analysis' },
+  { icon: CreditCard, text: 'Checking tenant financials...', detail: 'Credit & income verification' },
+  { icon: History, text: 'Reviewing payment history...', detail: 'On-time payment patterns' },
+  { icon: Calculator, text: 'Generating your offer...', detail: 'AI offer calculation' },
 ]
 
 const funFacts = [
-  "Did you know? 72% of landlords say thorough screening saves them money.",
-  "Tip: Verified income is the strongest predictor of on-time payments.",
-  "Fun fact: First-time renters aren't necessarily higher risk!",
-  "The average eviction costs ₹1.5-2.5 lakh in India.",
+  "Did you know? Landlords with verified tenants get up to 20% better offer rates.",
+  "Tip: Longer lease terms often mean higher offer amounts.",
+  "Fun fact: 85% of our offers are accepted within 24 hours!",
+  "Properties with on-time payment history above 90% get the best rates.",
 ]
 
 export default function LoadingAnalysis() {

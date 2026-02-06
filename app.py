@@ -1,11 +1,11 @@
-"""
-Simple FastAPI for Lovable Dashboard Integration
-Minimal setup - just score endpoint
+"""Leaseth Rental Income Advance API
+Evaluates rental income streams and generates cash offers for property owners.
 
 ARCHITECTURE:
 - Two-stage scoring: Stage 1 (eviction check) + Stage 2 (ML model)
 - Model: XGBoost trained on honest_model.py
 - Features: Loaded from honest_features.pkl (21 features)
+- Offer calculation: Converts reliability score to cash offer via discount rate
 """
 
 from fastapi import FastAPI, HTTPException, Depends
@@ -22,13 +22,14 @@ from sqlalchemy.orm import Session
 
 import os
 from src.database import SessionLocal, Application, Score, init_db, get_db
+from src.offer_calculator import calculate_offer
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Initialize FastAPI
-app = FastAPI(title="Leaseth Scoring API", version="2.0.0")
+app = FastAPI(title="Leaseth Rental Income Advance API", version="3.0.0")
 
 # CORS - Allow Lovable frontend to connect
 app.add_middleware(
@@ -107,35 +108,40 @@ def load_model():
 # Request/Response Models
 # ============================================================
 
+# Keep old name as alias for backward compatibility
 class ApplicantInput(BaseModel):
-    """Input from Lovable dashboard"""
-    # Basic Info
-    applicant_id: str = Field(..., description="Unique applicant ID")
-    name: str = Field(..., description="Applicant name")
-    age: int = Field(..., ge=18, le=120, description="Age")
+    """Property submission for rental income advance evaluation"""
+    # Submission ID
+    applicant_id: str = Field(..., description="Unique submission ID")
+    
+    # Tenant Info (existing tenant, NOT prospective)
+    name: str = Field(..., description="Current tenant name")
+    age: int = Field(..., ge=18, le=120, description="Tenant age")
     
     # Financial
-    monthly_income: float = Field(..., gt=0, description="Monthly income")
-    credit_score: int = Field(..., ge=300, le=850, description="Credit score")
-    monthly_rent: float = Field(..., gt=0, description="Monthly rent")
+    monthly_income: float = Field(..., gt=0, description="Tenant monthly income")
+    credit_score: int = Field(..., ge=300, le=850, description="Tenant credit score")
+    monthly_rent: float = Field(..., gt=0, description="Monthly rent amount")
     security_deposit: float = Field(default=0, ge=0)
     
     # Employment & Verification
-    employment_status: str = Field(default="employed", description="Employment status")
+    employment_status: str = Field(default="employed", description="Tenant employment status")
     employment_verified: bool = Field(default=False)
     income_verified: bool = Field(default=False)
     
-    # Rental History
+    # Tenant Rental History
     previous_evictions: int = Field(default=0, ge=0)
     rental_history_years: float = Field(default=0, ge=0)
     on_time_payments_percent: float = Field(default=100, ge=0, le=100)
     late_payments_count: int = Field(default=0, ge=0)
     
-    # Property
-    lease_term_months: int = Field(default=12, ge=1, le=60)
+    # Property & Lease
+    lease_term_months: int = Field(default=12, ge=1, le=60, description="Remaining lease months")
+    months_to_sell: int = Field(default=12, ge=1, le=60, description="Months of rent to sell")
     bedrooms: int = Field(default=1, ge=1)
     property_type: str = Field(default="apartment", description="Property type")
     location: str = Field(default="Mumbai", description="City/Location")
+    property_address: str = Field(default="", description="Property address")
     
     # Market Context
     market_median_rent: float = Field(default=0, ge=0)
@@ -144,15 +150,26 @@ class ApplicantInput(BaseModel):
 
 
 class ScoringResponse(BaseModel):
-    """Response to Lovable dashboard"""
+    """Response with offer details for rental income advance"""
     success: bool
     applicant_id: str
+    
+    # Risk assessment (kept for internal use)
     risk_score: int  # 0-100
     risk_category: str  # LOW, MEDIUM, HIGH
     default_probability: float  # 0-1
-    recommendation: str  # APPROVE, MANUAL_REVIEW, REJECT
+    recommendation: str  # APPROVE, MANUAL_REVIEW, REJECT (legacy)
     confidence: float  # 0-1
     reasoning: str
+    
+    # Offer details (new for rental income advance)
+    reliability_score: int = 0         # 0-100 (inverted risk: higher = more reliable)
+    offer_status: str = "NO_OFFER"     # OFFERED or NO_OFFER
+    offer_amount: float = 0.0          # Cash offer amount
+    gross_rental_value: float = 0.0    # Total value of rent stream
+    discount_rate: float = 0.0         # Discount percentage applied
+    discount_amount: float = 0.0       # Amount discounted
+    months_purchased: int = 0          # Months of rent being purchased
     
 
 # ============================================================
@@ -162,10 +179,11 @@ class ScoringResponse(BaseModel):
 @app.post("/api/score", response_model=ScoringResponse)
 async def score_applicant(applicant: ApplicantInput, db: Session = Depends(get_db)):
     """
-    Score a tenant applicant using two-stage approach:
-    - Stage 1: Eviction check and first-time renter adjustment
-    - Stage 2: ML model prediction with adjustments
-    Persists application and score to database.
+    Evaluate a rental income stream and generate a cash offer.
+    Uses two-stage approach:
+    - Stage 1: Tenant reliability check (eviction history)
+    - Stage 2: ML model prediction -> reliability score -> offer calculation
+    Persists submission and offer to database.
     """
     import time
     start_time = time.time()
@@ -231,7 +249,14 @@ async def score_applicant(applicant: ApplicantInput, db: Session = Depends(get_d
                 default_probability=0.95,
                 recommendation='REJECT',
                 confidence=0.90,
-                reasoning=eviction_reasoning
+                reasoning=eviction_reasoning,
+                reliability_score=5,
+                offer_status='NO_OFFER',
+                offer_amount=0,
+                gross_rental_value=applicant.monthly_rent * getattr(applicant, 'months_to_sell', applicant.lease_term_months),
+                discount_rate=0,
+                discount_amount=0,
+                months_purchased=0,
             )
         
         # ============================================================
@@ -313,8 +338,14 @@ async def score_applicant(applicant: ApplicantInput, db: Session = Depends(get_d
                 risk_category=decision['risk_category'],
                 recommendation=decision['recommendation'],
                 confidence_score=abs(final_probability - 0.5) * 2,
-                model_version="V2_2025_01",
+                model_version="V3_2026_02",
                 inference_time_ms=inference_time_ms,
+                reliability_score=reliability_score,
+                offer_status=offer.offer_status,
+                offer_amount=offer.offer_amount,
+                gross_rental_value=offer.gross_rental_value,
+                discount_rate=offer.discount_rate,
+                months_purchased=months_to_sell if offer.offer_status == 'OFFERED' else 0,
             )
             db.add(db_score)
             db.commit()
@@ -324,6 +355,28 @@ async def score_applicant(applicant: ApplicantInput, db: Session = Depends(get_d
             db.rollback()
             # Continue returning response even if persistence fails
 
+        # ============================================================
+        # OFFER CALCULATION
+        # ============================================================
+        reliability_score = max(0, min(100, 100 - risk_score))
+        months_to_sell = getattr(applicant, 'months_to_sell', applicant.lease_term_months)
+        
+        offer = calculate_offer(
+            monthly_rent=applicant.monthly_rent,
+            months_to_sell=months_to_sell,
+            reliability_score=reliability_score,
+            property_type=applicant.property_type,
+            lease_term_months=applicant.lease_term_months,
+            credit_score=applicant.credit_score,
+            on_time_payments_pct=applicant.on_time_payments_percent,
+        )
+        
+        logger.info(
+            f"Offer for {applicant.applicant_id}: "
+            f"reliability={reliability_score}, status={offer.offer_status}, "
+            f"amount=₹{offer.offer_amount:,.0f}"
+        )
+
         return ScoringResponse(
             success=True,
             applicant_id=applicant.applicant_id,
@@ -332,7 +385,14 @@ async def score_applicant(applicant: ApplicantInput, db: Session = Depends(get_d
             default_probability=final_probability,
             recommendation=decision['recommendation'],
             confidence=abs(final_probability - 0.5) * 2,  # Higher confidence at extremes
-            reasoning=decision['reasoning']
+            reasoning=decision['reasoning'],
+            reliability_score=reliability_score,
+            offer_status=offer.offer_status,
+            offer_amount=offer.offer_amount,
+            gross_rental_value=offer.gross_rental_value,
+            discount_rate=offer.discount_rate,
+            discount_amount=offer.discount_amount,
+            months_purchased=months_to_sell if offer.offer_status == 'OFFERED' else 0,
         )
         
     except HTTPException:
@@ -581,9 +641,9 @@ def make_decision(probability: float, risk_score: int, features: dict, eviction_
     Three-tier decision logic with more lenient thresholds.
     
     Thresholds (after adjustments):
-    - LOW RISK: < 38% → APPROVE
-    - MEDIUM RISK: 38-65% → MANUAL_REVIEW
-    - HIGH RISK: > 65% → REJECT
+    - LOW RISK: < 38% -> APPROVE
+    - MEDIUM RISK: 38-65% -> MANUAL_REVIEW
+    - HIGH RISK: > 65% -> REJECT
     """
     
     credit = features['credit_score']
@@ -696,6 +756,12 @@ async def get_applicants(
                     "confidence": score.confidence_score,
                     "reasoning": f"Risk score: {score.risk_score}%",
                     "processing_time_ms": score.inference_time_ms,
+                    "reliability_score": max(0, 100 - score.risk_score),
+                    "offer_status": getattr(score, 'offer_status', 'OFFERED' if score.risk_score < 60 else 'NO_OFFER'),
+                    "offer_amount": getattr(score, 'offer_amount', 0),
+                    "gross_rental_value": getattr(score, 'gross_rental_value', 0),
+                    "discount_rate": getattr(score, 'discount_rate', 0),
+                    "months_purchased": getattr(score, 'months_purchased', 0),
                 },
                 scored_at=app_record.created_at.isoformat() if app_record.created_at else datetime.utcnow().isoformat(),
             )
@@ -724,11 +790,12 @@ def health_check():
 def root():
     """API info"""
     return {
-        "name": "Leaseth Scoring API",
-        "version": "2.0.0",
+        "name": "Leaseth Rental Income Advance API",
+        "version": "3.0.0",
+        "description": "Evaluate rental income streams and get cash offers",
         "endpoints": {
             "score": "POST /api/score",
-            "applicants": "GET /api/applicants",
+            "submissions": "GET /api/applicants",
             "health": "GET /health",
             "docs": "GET /docs"
         }

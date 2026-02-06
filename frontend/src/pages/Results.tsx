@@ -1,64 +1,32 @@
 import { useNavigate, Link } from 'react-router-dom'
 import { useEffect, useState } from 'react'
-import { ArrowLeft, ArrowRight, Download, Share2, CheckCircle, AlertTriangle, XCircle, Lightbulb, TrendingUp, TrendingDown } from 'lucide-react'
-import { ScoringResponse, ApplicantInput } from '../types'
+import { ArrowLeft, ArrowRight, Download, Share2, CheckCircle, XCircle, Lightbulb, TrendingUp, TrendingDown, DollarSign, Calendar, Percent, Shield } from 'lucide-react'
+import { ScoringResponse, ApplicantInput, getReliabilityCategory } from '../types'
+import { useCurrency } from '../contexts/CurrencyContext'
 
 interface ResultsProps {
   result: ScoringResponse | null
   input: ApplicantInput | null
 }
 
-function getRecommendationConfig(rec: string) {
-  if (rec === 'APPROVE') {
-    return {
-      label: 'Approve',
-      description: 'This applicant looks good to go',
-      icon: CheckCircle,
-      color: 'emerald',
-      bgClass: 'bg-emerald-50',
-      textClass: 'text-emerald-700',
-      borderClass: 'border-emerald-200'
-    }
-  }
-  if (rec.startsWith('MANUAL_REVIEW')) {
-    return {
-      label: 'Review needed',
-      description: 'Worth a closer look before deciding',
-      icon: AlertTriangle,
-      color: 'amber',
-      bgClass: 'bg-amber-50',
-      textClass: 'text-amber-700',
-      borderClass: 'border-amber-200'
-    }
-  }
-  return {
-    label: 'Decline',
-    description: 'High risk signals detected',
-    icon: XCircle,
-    color: 'red',
-    bgClass: 'bg-red-50',
-    textClass: 'text-red-700',
-    borderClass: 'border-red-200'
-  }
-}
-
-function getRiskColor(category: string) {
-  if (category === 'LOW') return { text: 'text-emerald-600', bg: 'bg-emerald-100' }
-  if (category === 'MEDIUM') return { text: 'text-amber-600', bg: 'bg-amber-100' }
+function getReliabilityColor(score: number) {
+  if (score >= 70) return { text: 'text-emerald-600', bg: 'bg-emerald-100' }
+  if (score >= 40) return { text: 'text-amber-600', bg: 'bg-amber-100' }
   return { text: 'text-red-600', bg: 'bg-red-100' }
 }
 
 export default function Results({ result, input }: ResultsProps) {
   const navigate = useNavigate()
   const [showConfetti, setShowConfetti] = useState(false)
+  const { formatCurrency } = useCurrency()
 
   useEffect(() => {
     if (!result) {
       navigate('/score')
       return
     }
-    // Show confetti for low-risk approved tenants
-    if (result.risk_category === 'LOW' && result.recommendation === 'APPROVE') {
+    // Show confetti for approved offers
+    if (result.offer_status === 'OFFERED' && result.reliability_score >= 60) {
       setShowConfetti(true)
       setTimeout(() => setShowConfetti(false), 3000)
     }
@@ -68,36 +36,39 @@ export default function Results({ result, input }: ResultsProps) {
     return null
   }
 
-  const rentToIncome = Math.round((input.monthly_rent / input.monthly_income) * 100)
-  const recConfig = getRecommendationConfig(result.recommendation)
-  const riskColors = getRiskColor(result.risk_category)
-  const RecIcon = recConfig.icon
+  const reliabilityColors = getReliabilityColor(result.reliability_score)
+  const reliabilityCategory = getReliabilityCategory(result.reliability_score)
+  const isOffered = result.offer_status === 'OFFERED'
 
-  // Determine what's good and what's concerning
+  // Determine strengths and concerns about this income stream
   const strengths: string[] = []
   const concerns: string[] = []
 
-  if (input.credit_score >= 700) strengths.push('Strong credit score')
-  else if (input.credit_score < 600) concerns.push('Low credit score')
+  if (input.credit_score >= 700) strengths.push('Tenant has strong credit score')
+  else if (input.credit_score < 600) concerns.push('Tenant has low credit score')
 
+  const rentToIncome = Math.round((input.monthly_rent / input.monthly_income) * 100)
   if (rentToIncome <= 30) strengths.push('Healthy rent-to-income ratio')
-  else if (rentToIncome > 40) concerns.push('High rent-to-income ratio')
+  else if (rentToIncome > 40) concerns.push('High rent burden on tenant')
 
   if (input.previous_evictions === 0) strengths.push('Clean eviction record')
   else concerns.push(`${input.previous_evictions} previous eviction(s)`)
 
-  if (input.employment_verified && input.income_verified) strengths.push('Verified employment & income')
-  else if (!input.employment_verified && !input.income_verified) concerns.push('Unverified employment/income')
+  if (input.employment_verified && input.income_verified) strengths.push('Employment & income verified')
+  else if (!input.employment_verified && !input.income_verified) concerns.push('No employment/income verification')
 
-  if (input.on_time_payments_percent >= 90) strengths.push('Excellent payment history')
+  if (input.on_time_payments_percent >= 90) strengths.push('Excellent payment track record')
   else if (input.on_time_payments_percent < 70) concerns.push('Inconsistent payment history')
 
-  if (input.rental_history_years >= 3) strengths.push('Experienced renter')
-  else if (input.rental_history_years === 0) concerns.push('First-time renter')
+  if (input.rental_history_years >= 3) strengths.push('Long-term stable tenant')
+  else if (input.rental_history_years === 0) concerns.push('New tenant — no rental history')
+
+  if (input.lease_term_months >= 12) strengths.push('Strong lease term remaining')
+  else if (input.lease_term_months < 6) concerns.push('Short remaining lease')
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: 'var(--color-cream)' }}>
-      {/* Confetti effect for good results */}
+      {/* Confetti effect for good offers */}
       {showConfetti && (
         <div className="fixed inset-0 pointer-events-none z-50 overflow-hidden">
           {[...Array(50)].map((_, i) => (
@@ -121,13 +92,13 @@ export default function Results({ result, input }: ResultsProps) {
         <div className="max-w-4xl mx-auto px-6 py-4 flex items-center justify-between">
           <Link to="/score" className="flex items-center gap-2 text-neutral-500 hover:text-neutral-900 transition-colors">
             <ArrowLeft className="w-4 h-4" />
-            <span className="text-sm">New assessment</span>
+            <span className="text-sm">New submission</span>
           </Link>
           <div className="flex items-center gap-2">
             <div className="w-6 h-6 rounded-full bg-[#7c9a82] flex items-center justify-center">
               <span className="text-white text-xs">L</span>
             </div>
-            <span className="text-sm font-medium">Results</span>
+            <span className="text-sm font-medium">Your Offer</span>
           </div>
           <div className="flex gap-2">
             <button className="p-2 rounded-lg hover:bg-neutral-100 transition-colors text-neutral-500">
@@ -141,66 +112,172 @@ export default function Results({ result, input }: ResultsProps) {
       </header>
 
       <main className="max-w-4xl mx-auto px-6 py-8 md:py-12">
-        {/* Hero Score Section */}
-        <div className="card p-8 md:p-12 mb-8 text-center relative overflow-hidden">
-          {/* Decorative blob */}
-          <div
-            className="absolute -top-20 -right-20 w-64 h-64 rounded-full opacity-10 blob"
-            style={{ backgroundColor: result.risk_category === 'LOW' ? '#7c9a82' : result.risk_category === 'MEDIUM' ? '#d4a574' : '#c4704f' }}
-          />
 
-          <div className="relative z-10">
-            <p className="text-neutral-500 mb-2">Assessment for</p>
-            <h1 className="text-2xl md:text-3xl mb-8" style={{ fontFamily: 'DM Serif Display, serif' }}>
-              {input.name}
-            </h1>
+        {isOffered ? (
+          <>
+            {/* ============================================================ */}
+            {/* OFFERED: Show cash offer as hero                             */}
+            {/* ============================================================ */}
 
-            <div className="mb-8">
+            {/* Hero Offer Section */}
+            <div className="card p-8 md:p-12 mb-8 text-center relative overflow-hidden">
               <div
-                className={`text-8xl md:text-9xl font-light ${riskColors.text}`}
-                style={{ fontFamily: 'DM Serif Display, serif' }}
-              >
-                {result.risk_score}
+                className="absolute -top-20 -right-20 w-64 h-64 rounded-full opacity-10 blob"
+                style={{ backgroundColor: '#7c9a82' }}
+              />
+
+              <div className="relative z-10">
+                <p className="text-neutral-500 mb-1">Cash offer for your rental income</p>
+                <p className="text-sm text-neutral-400 mb-8">
+                  Property: {input.property_address || input.location} · Tenant: {input.name}
+                </p>
+
+                <div className="mb-2">
+                  <span
+                    className="text-7xl md:text-8xl font-light text-emerald-600"
+                    style={{ fontFamily: 'DM Serif Display, serif' }}
+                  >
+                    {formatCurrency(result.offer_amount)}
+                  </span>
+                </div>
+                <p className="text-neutral-500 mb-8">
+                  Upfront cash for {result.months_purchased} months of rental income
+                </p>
+
+                <div className="flex items-center justify-center gap-4 flex-wrap">
+                  <span className={`px-4 py-2 rounded-full text-sm font-medium ${reliabilityColors.bg} ${reliabilityColors.text}`}>
+                    {reliabilityCategory} reliability
+                  </span>
+                  <span className="px-4 py-2 rounded-full text-sm font-medium border bg-emerald-50 text-emerald-700 border-emerald-200">
+                    <CheckCircle className="w-4 h-4 inline mr-2" />
+                    Offer available
+                  </span>
+                </div>
               </div>
-              <p className="text-neutral-500 mt-2">Risk Score (lower is better)</p>
             </div>
 
-            <div className="flex items-center justify-center gap-4 flex-wrap">
-              <span className={`px-4 py-2 rounded-full text-sm font-medium ${riskColors.bg} ${riskColors.text}`}>
-                {result.risk_category.toLowerCase()} risk
-              </span>
-              <span className={`px-4 py-2 rounded-full text-sm font-medium border ${recConfig.bgClass} ${recConfig.textClass} ${recConfig.borderClass}`}>
-                <RecIcon className="w-4 h-4 inline mr-2" />
-                {recConfig.label}
-              </span>
+            {/* Offer Breakdown */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+              <div className="card p-5 text-center">
+                <div className="w-10 h-10 rounded-xl bg-emerald-100 flex items-center justify-center mx-auto mb-3">
+                  <DollarSign className="w-5 h-5 text-emerald-600" />
+                </div>
+                <p className="text-2xl font-light mb-1" style={{ fontFamily: 'DM Serif Display, serif' }}>
+                  {formatCurrency(result.gross_rental_value)}
+                </p>
+                <p className="text-xs text-neutral-500">Total Rental Value</p>
+              </div>
+              <div className="card p-5 text-center">
+                <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center mx-auto mb-3">
+                  <Percent className="w-5 h-5 text-amber-600" />
+                </div>
+                <p className="text-2xl font-light mb-1" style={{ fontFamily: 'DM Serif Display, serif' }}>
+                  {(result.discount_rate * 100).toFixed(1)}%
+                </p>
+                <p className="text-xs text-neutral-500">Discount Rate</p>
+              </div>
+              <div className="card p-5 text-center">
+                <div className="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center mx-auto mb-3">
+                  <Calendar className="w-5 h-5 text-blue-600" />
+                </div>
+                <p className="text-2xl font-light mb-1" style={{ fontFamily: 'DM Serif Display, serif' }}>
+                  {result.months_purchased}
+                </p>
+                <p className="text-xs text-neutral-500">Months Purchased</p>
+              </div>
+              <div className="card p-5 text-center">
+                <div className="w-10 h-10 rounded-xl bg-[#7c9a82]/10 flex items-center justify-center mx-auto mb-3">
+                  <Shield className="w-5 h-5 text-[#7c9a82]" />
+                </div>
+                <p className={`text-2xl font-light mb-1 ${reliabilityColors.text}`} style={{ fontFamily: 'DM Serif Display, serif' }}>
+                  {result.reliability_score}
+                </p>
+                <p className="text-xs text-neutral-500">Reliability Score</p>
+              </div>
             </div>
-          </div>
-        </div>
 
-        {/* Recommendation Card */}
-        <div className={`card p-6 mb-8 border-l-4 ${recConfig.borderClass}`}>
-          <div className="flex items-start gap-4">
-            <div className={`w-12 h-12 rounded-xl ${recConfig.bgClass} flex items-center justify-center flex-shrink-0`}>
-              <RecIcon className={`w-6 h-6 ${recConfig.textClass}`} />
+            {/* Deal Summary Card */}
+            <div className="card p-6 mb-8 border-l-4 border-emerald-300">
+              <h3 className="font-medium text-lg mb-4" style={{ fontFamily: 'DM Serif Display, serif' }}>
+                How this works
+              </h3>
+              <div className="space-y-3 text-sm text-neutral-600">
+                <div className="flex justify-between py-2 border-b border-neutral-100">
+                  <span>Your monthly rent</span>
+                  <span className="font-medium">{formatCurrency(input.monthly_rent)}/month</span>
+                </div>
+                <div className="flex justify-between py-2 border-b border-neutral-100">
+                  <span>Months of rent you're selling</span>
+                  <span className="font-medium">{result.months_purchased} months</span>
+                </div>
+                <div className="flex justify-between py-2 border-b border-neutral-100">
+                  <span>Total rental value</span>
+                  <span className="font-medium">{formatCurrency(result.gross_rental_value)}</span>
+                </div>
+                <div className="flex justify-between py-2 border-b border-neutral-100">
+                  <span>Discount applied ({(result.discount_rate * 100).toFixed(1)}%)</span>
+                  <span className="font-medium text-amber-600">-{formatCurrency(result.discount_amount)}</span>
+                </div>
+                <div className="flex justify-between py-3 text-base font-medium text-emerald-700 bg-emerald-50 -mx-2 px-4 rounded-lg">
+                  <span>You receive upfront</span>
+                  <span>{formatCurrency(result.offer_amount)}</span>
+                </div>
+              </div>
+              <p className="text-xs text-neutral-400 mt-4">
+                You keep property ownership. No debt created. Leaseth collects the monthly rent for the agreed period.
+              </p>
             </div>
-            <div>
-              <h2 className="font-medium text-lg mb-1" style={{ fontFamily: 'DM Serif Display, serif' }}>
-                {recConfig.label}
-              </h2>
-              <p className="text-neutral-600">{result.reasoning}</p>
+
+            {/* Accept Offer CTA */}
+            <div className="card p-6 mb-8 text-center bg-gradient-to-r from-emerald-50 to-[#7c9a82]/10 border border-emerald-200">
+              <h3 className="text-xl font-medium mb-2" style={{ fontFamily: 'DM Serif Display, serif' }}>
+                Ready to get your cash?
+              </h3>
+              <p className="text-neutral-600 text-sm mb-6">This offer is valid for 48 hours</p>
+              <button className="btn-primary px-10 py-4 text-lg">
+                Accept Offer
+                <ArrowRight className="w-5 h-5 ml-2" />
+              </button>
             </div>
-          </div>
-        </div>
+          </>
+        ) : (
+          <>
+            {/* ============================================================ */}
+            {/* NO OFFER: Show rejection with reasoning                      */}
+            {/* ============================================================ */}
+
+            <div className="card p-8 md:p-12 mb-8 text-center relative overflow-hidden">
+              <div
+                className="absolute -top-20 -right-20 w-64 h-64 rounded-full opacity-10 blob"
+                style={{ backgroundColor: '#c4704f' }}
+              />
+
+              <div className="relative z-10">
+                <div className="w-16 h-16 rounded-2xl bg-red-100 flex items-center justify-center mx-auto mb-6">
+                  <XCircle className="w-8 h-8 text-red-500" />
+                </div>
+                <h1 className="text-2xl md:text-3xl mb-4" style={{ fontFamily: 'DM Serif Display, serif' }}>
+                  Unable to make an offer
+                </h1>
+                <p className="text-neutral-600 mb-4 max-w-md mx-auto">
+                  {result.reasoning}
+                </p>
+                <p className="text-sm text-neutral-400">
+                  Reliability score: {result.reliability_score}/100 (minimum 40 required)
+                </p>
+              </div>
+            </div>
+          </>
+        )}
 
         {/* Strengths & Concerns */}
         <div className="grid md:grid-cols-2 gap-6 mb-8">
-          {/* Strengths */}
           <div className="card p-6">
             <div className="flex items-center gap-3 mb-4">
               <div className="w-10 h-10 rounded-xl bg-emerald-100 flex items-center justify-center">
                 <TrendingUp className="w-5 h-5 text-emerald-600" />
               </div>
-              <h3 className="font-medium" style={{ fontFamily: 'DM Serif Display, serif' }}>What's working</h3>
+              <h3 className="font-medium" style={{ fontFamily: 'DM Serif Display, serif' }}>Income stream strengths</h3>
             </div>
             {strengths.length > 0 ? (
               <ul className="space-y-2">
@@ -216,13 +293,12 @@ export default function Results({ result, input }: ResultsProps) {
             )}
           </div>
 
-          {/* Concerns */}
           <div className="card p-6">
             <div className="flex items-center gap-3 mb-4">
               <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center">
                 <TrendingDown className="w-5 h-5 text-amber-600" />
               </div>
-              <h3 className="font-medium" style={{ fontFamily: 'DM Serif Display, serif' }}>Watch out for</h3>
+              <h3 className="font-medium" style={{ fontFamily: 'DM Serif Display, serif' }}>Risk factors</h3>
             </div>
             {concerns.length > 0 ? (
               <ul className="space-y-2">
@@ -239,83 +315,56 @@ export default function Results({ result, input }: ResultsProps) {
           </div>
         </div>
 
-        {/* Key Metrics */}
-        <div className="card p-6 mb-8">
-          <h3 className="font-medium mb-6" style={{ fontFamily: 'DM Serif Display, serif' }}>Key numbers</h3>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-            <div className="text-center p-4 rounded-xl bg-neutral-50">
-              <div className="text-3xl font-light mb-1" style={{ fontFamily: 'DM Serif Display, serif', color: input.credit_score >= 700 ? '#7c9a82' : input.credit_score < 600 ? '#c4704f' : '#1a1a18' }}>
-                {input.credit_score}
-              </div>
-              <p className="text-xs text-neutral-500">Credit Score</p>
-            </div>
-            <div className="text-center p-4 rounded-xl bg-neutral-50">
-              <div className="text-3xl font-light mb-1" style={{ fontFamily: 'DM Serif Display, serif', color: rentToIncome <= 30 ? '#7c9a82' : rentToIncome > 40 ? '#c4704f' : '#1a1a18' }}>
-                {rentToIncome}%
-              </div>
-              <p className="text-xs text-neutral-500">Rent/Income</p>
-            </div>
-            <div className="text-center p-4 rounded-xl bg-neutral-50">
-              <div className="text-3xl font-light mb-1" style={{ fontFamily: 'DM Serif Display, serif' }}>
-                {input.rental_history_years}y
-              </div>
-              <p className="text-xs text-neutral-500">Renting History</p>
-            </div>
-            <div className="text-center p-4 rounded-xl bg-neutral-50">
-              <div className="text-3xl font-light mb-1" style={{ fontFamily: 'DM Serif Display, serif', color: input.previous_evictions > 0 ? '#c4704f' : '#7c9a82' }}>
-                {input.previous_evictions}
-              </div>
-              <p className="text-xs text-neutral-500">Evictions</p>
-            </div>
-          </div>
-        </div>
-
-        {/* Detailed Breakdown */}
+        {/* Tenant & Property Details */}
         <div className="grid md:grid-cols-2 gap-6 mb-8">
           <div className="card p-6">
-            <h3 className="text-xs uppercase tracking-wide text-neutral-400 mb-4">Financial Details</h3>
+            <h3 className="text-xs uppercase tracking-wide text-neutral-400 mb-4">Tenant Details</h3>
             <div className="space-y-4">
               <div className="flex justify-between py-2 border-b border-neutral-100">
-                <span className="text-neutral-600">Monthly income</span>
-                <span className="font-medium">₹{input.monthly_income.toLocaleString()}</span>
+                <span className="text-neutral-600">Tenant name</span>
+                <span className="font-medium">{input.name}</span>
               </div>
               <div className="flex justify-between py-2 border-b border-neutral-100">
-                <span className="text-neutral-600">Monthly rent</span>
-                <span className="font-medium">₹{input.monthly_rent.toLocaleString()}</span>
+                <span className="text-neutral-600">Monthly income</span>
+                <span className="font-medium">{formatCurrency(input.monthly_income)}</span>
               </div>
               <div className="flex justify-between py-2 border-b border-neutral-100">
                 <span className="text-neutral-600">Credit score</span>
                 <span className="font-medium">{input.credit_score}</span>
-              </div>
-              <div className="flex justify-between py-2">
-                <span className="text-neutral-600">Income verified</span>
-                <span className={input.income_verified ? 'text-emerald-600 font-medium' : 'text-neutral-400'}>
-                  {input.income_verified ? 'Yes' : 'No'}
-                </span>
-              </div>
-            </div>
-          </div>
-
-          <div className="card p-6">
-            <h3 className="text-xs uppercase tracking-wide text-neutral-400 mb-4">Background</h3>
-            <div className="space-y-4">
-              <div className="flex justify-between py-2 border-b border-neutral-100">
-                <span className="text-neutral-600">Years renting</span>
-                <span className="font-medium">{input.rental_history_years}</span>
-              </div>
-              <div className="flex justify-between py-2 border-b border-neutral-100">
-                <span className="text-neutral-600">Payment history</span>
-                <span className="font-medium">{input.on_time_payments_percent}% on-time</span>
               </div>
               <div className="flex justify-between py-2 border-b border-neutral-100">
                 <span className="text-neutral-600">Employment</span>
                 <span className="font-medium capitalize">{input.employment_status.replace('-', ' ')}</span>
               </div>
               <div className="flex justify-between py-2">
-                <span className="text-neutral-600">Employment verified</span>
-                <span className={input.employment_verified ? 'text-emerald-600 font-medium' : 'text-neutral-400'}>
-                  {input.employment_verified ? 'Yes' : 'No'}
-                </span>
+                <span className="text-neutral-600">Payment history</span>
+                <span className="font-medium">{input.on_time_payments_percent}% on-time</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="card p-6">
+            <h3 className="text-xs uppercase tracking-wide text-neutral-400 mb-4">Property & Lease</h3>
+            <div className="space-y-4">
+              <div className="flex justify-between py-2 border-b border-neutral-100">
+                <span className="text-neutral-600">Monthly rent</span>
+                <span className="font-medium">{formatCurrency(input.monthly_rent)}</span>
+              </div>
+              <div className="flex justify-between py-2 border-b border-neutral-100">
+                <span className="text-neutral-600">Property type</span>
+                <span className="font-medium capitalize">{input.property_type}</span>
+              </div>
+              <div className="flex justify-between py-2 border-b border-neutral-100">
+                <span className="text-neutral-600">Location</span>
+                <span className="font-medium">{input.location}</span>
+              </div>
+              <div className="flex justify-between py-2 border-b border-neutral-100">
+                <span className="text-neutral-600">Remaining lease</span>
+                <span className="font-medium">{input.lease_term_months} months</span>
+              </div>
+              <div className="flex justify-between py-2">
+                <span className="text-neutral-600">Years as tenant</span>
+                <span className="font-medium">{input.rental_history_years}</span>
               </div>
             </div>
           </div>
@@ -328,13 +377,13 @@ export default function Results({ result, input }: ResultsProps) {
               <Lightbulb className="w-5 h-5 text-[#7c9a82]" />
             </div>
             <div>
-              <h3 className="font-medium text-neutral-900 mb-1">Pro tip</h3>
+              <h3 className="font-medium text-neutral-900 mb-1">Tips to improve your offer</h3>
               <p className="text-sm text-neutral-600">
-                {result.risk_category === 'LOW'
-                  ? "This looks like a solid applicant. Consider locking in a longer lease term for stability."
-                  : result.risk_category === 'MEDIUM'
-                  ? "Request additional references or a larger security deposit to mitigate risk."
-                  : "If you still want to proceed, consider a month-to-month lease with strict payment terms."}
+                {isOffered
+                  ? result.reliability_score >= 70
+                    ? "Great income stream! Consider selling more months for a larger lump sum. Longer lease terms also improve your rate."
+                    : "Get tenant's employment and income verified to boost your reliability score and receive a better rate."
+                  : "Ensure your tenant has verified employment and income. A longer lease term and clean payment history significantly improve eligibility."}
               </p>
             </div>
           </div>
@@ -343,21 +392,21 @@ export default function Results({ result, input }: ResultsProps) {
         {/* Actions */}
         <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-6 rounded-2xl bg-white border border-neutral-100">
           <div className="text-center sm:text-left">
-            <p className="font-medium text-neutral-900">What's next?</p>
-            <p className="text-sm text-neutral-500">Score another applicant or review past assessments</p>
+            <p className="font-medium text-neutral-900">Want to try different terms?</p>
+            <p className="text-sm text-neutral-500">Submit another property or adjust the months</p>
           </div>
           <div className="flex items-center gap-4">
             <button
               onClick={() => navigate('/score')}
               className="text-sm text-neutral-500 hover:text-neutral-900 transition-colors px-4 py-2"
             >
-              Score another
+              New submission
             </button>
             <button
               onClick={() => navigate('/dashboard')}
               className="btn-primary"
             >
-              View all results
+              View all offers
               <ArrowRight className="w-4 h-4 ml-2" />
             </button>
           </div>

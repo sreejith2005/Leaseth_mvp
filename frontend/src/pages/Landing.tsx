@@ -1,30 +1,33 @@
 import { Link } from 'react-router-dom'
-import { ArrowRight, Shield, Clock, TrendingUp, Quote, Sparkles } from 'lucide-react'
+import { ArrowRight, Shield, Clock, TrendingUp, Quote, Sparkles, DollarSign, Building2, Zap } from 'lucide-react'
 import { useState, useEffect } from 'react'
+import { useCurrency } from '../contexts/CurrencyContext'
+import CurrencySelector from '../components/CurrencySelector'
 
 const testimonials = [
   {
-    quote: "Finally, a tool that doesn't feel like it was designed by a committee. Saved me from a nightmare tenant last month.",
-    author: "Priya M.",
-    role: "Property owner, Mumbai",
-    avatar: "P"
+    quote: "Got 12 months of rent upfront in 48 hours. No paperwork nightmare, no loan. Just clean cash.",
+    author: "James W.",
+    role: "Property owner, London",
+    avatar: "J"
   },
   {
-    quote: "I was skeptical about 'AI scoring' but this actually makes sense. The reasoning is clear, not just a number.",
-    author: "Rahul K.",
-    role: "Landlord, Bangalore",
-    avatar: "R"
+    quote: "I needed capital for a new investment but didn't want more loan installments. Leaseth bought my rental income — brilliant concept.",
+    author: "Carlos M.",
+    role: "Landlord, Dubai",
+    avatar: "C"
   },
   {
-    quote: "My accountant thinks I'm a genius now. Three properties, zero payment issues in 8 months.",
-    author: "Anjali S.",
-    role: "Real estate investor",
-    avatar: "A"
+    quote: "Three properties, three offers accepted. Best way to unlock liquidity without selling or borrowing.",
+    author: "Sophie L.",
+    role: "Real estate investor, Berlin",
+    avatar: "S"
   }
 ]
 
 export default function Landing() {
   const [activeTestimonial, setActiveTestimonial] = useState(0)
+  const { formatCurrency, symbol } = useCurrency()
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -44,11 +47,12 @@ export default function Landing() {
           <span className="text-lg font-medium tracking-tight">leaseth</span>
         </Link>
         <div className="flex items-center gap-6">
+          <CurrencySelector />
           <Link to="/dashboard" className="hidden md:block link text-sm">
-            Past assessments
+            My offers
           </Link>
           <Link to="/score" className="btn-primary text-sm">
-            Try it free
+            Get a cash offer
             <Sparkles className="w-4 h-4" />
           </Link>
         </div>
@@ -62,22 +66,22 @@ export default function Landing() {
             <div className="fade-in">
               <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#7c9a82]/10 text-[#7c9a82] text-sm mb-6">
                 <span className="w-2 h-2 rounded-full bg-[#7c9a82] animate-pulse" />
-                Now with 72% prediction accuracy
+                AI-powered rental income valuation
               </div>
 
               <h1 className="text-4xl md:text-5xl lg:text-6xl leading-[1.1] mb-6" style={{ color: 'var(--color-ink)' }}>
-                Stop guessing.<br />
-                <span className="highlight">Start knowing.</span>
+                Get cash now.<br />
+                <span className="highlight">Keep your property.</span>
               </h1>
 
               <p className="text-lg text-neutral-600 mb-8 max-w-md leading-relaxed">
-                Tenant screening that actually tells you <em>why</em>, not just a number
-                pulled from thin air. Built by landlords who got burned one too many times.
+                Sell your future rental income for upfront cash. No debt, no loan installments,
+                no selling your property. Just <em>instant liquidity</em> from your rental stream.
               </p>
 
               <div className="flex flex-col sm:flex-row gap-4 mb-12">
                 <Link to="/score" className="btn-primary">
-                  Score your first tenant
+                  Get your cash offer
                   <ArrowRight className="w-4 h-4" />
                 </Link>
                 <Link to="/dashboard" className="btn-secondary">
@@ -85,7 +89,7 @@ export default function Landing() {
                 </Link>
               </div>
 
-              {/* Social proof - small and honest */}
+              {/* Social proof */}
               <div className="flex items-center gap-4 text-sm text-neutral-500">
                 <div className="flex -space-x-2">
                   {['#c4704f', '#7c9a82', '#d4c5b0'].map((color, i) => (
@@ -94,15 +98,15 @@ export default function Landing() {
                       className="w-8 h-8 rounded-full border-2 border-[#faf8f5] flex items-center justify-center text-white text-xs font-medium"
                       style={{ backgroundColor: color }}
                     >
-                      {['A', 'R', 'P'][i]}
+                      {['J', 'C', 'S'][i]}
                     </div>
                   ))}
                 </div>
-                <span>Trusted by 200+ landlords across India</span>
+                <span>1,200+ rental income streams purchased globally</span>
               </div>
             </div>
 
-            {/* Right column - Visual */}
+            {/* Right column - Sample Offer Card */}
             <div className="relative fade-in delay-200">
               {/* Decorative blob */}
               <div
@@ -113,50 +117,52 @@ export default function Landing() {
               {/* Main card */}
               <div className="card relative z-10">
                 <div className="flex items-center justify-between mb-6">
-                  <span className="text-sm font-medium">Sample Assessment</span>
+                  <span className="text-sm font-medium">Sample Offer</span>
                   <span className="px-2 py-1 rounded-full bg-emerald-100 text-emerald-700 text-xs font-medium">
-                    Low Risk
+                    Offer Available
                   </span>
                 </div>
 
-                <div className="text-center py-8">
-                  <div className="text-7xl font-light text-emerald-600 mb-2" style={{ fontFamily: 'DM Serif Display, serif' }}>
-                    23
+                <div className="text-center py-6">
+                  <p className="text-neutral-500 text-sm mb-1">Your cash offer</p>
+                  <div className="flex items-baseline justify-center gap-1">
+                    <span className="text-6xl font-light text-emerald-600" style={{ fontFamily: 'DM Serif Display, serif' }}>
+                      {formatCurrency(252000)}
+                    </span>
                   </div>
-                  <p className="text-neutral-500 text-sm">Risk Score</p>
+                  <p className="text-neutral-400 text-sm mt-2">for 12 months of rental income</p>
                 </div>
 
                 <div className="space-y-4 border-t border-neutral-100 pt-6">
                   <div className="flex justify-between text-sm">
-                    <span className="text-neutral-500">Credit Score</span>
-                    <span className="font-medium">742</span>
+                    <span className="text-neutral-500">Monthly Rent</span>
+                    <span className="font-medium">{formatCurrency(25000)}</span>
                   </div>
                   <div className="flex justify-between text-sm">
-                    <span className="text-neutral-500">Rent-to-Income</span>
-                    <span className="font-medium">24%</span>
+                    <span className="text-neutral-500">Total Rental Value</span>
+                    <span className="font-medium">{formatCurrency(300000)}</span>
                   </div>
                   <div className="flex justify-between text-sm">
-                    <span className="text-neutral-500">Payment History</span>
-                    <span className="font-medium text-emerald-600">Excellent</span>
+                    <span className="text-neutral-500">Reliability Score</span>
+                    <span className="font-medium text-emerald-600">82/100</span>
                   </div>
                 </div>
 
                 <div className="mt-6 p-4 rounded-xl bg-neutral-50 text-sm text-neutral-600 leading-relaxed">
-                  <strong className="text-neutral-800">Why this score:</strong> Strong income ratio
-                  combined with excellent credit and verified employment. No prior evictions.
-                  Recommend approval.
+                  <strong className="text-neutral-800">How it works:</strong> You get {formatCurrency(252000)} upfront.
+                  We collect the {formatCurrency(25000)}/month rent for 12 months. You keep your property. Zero debt created.
                 </div>
               </div>
 
               {/* Floating accent card */}
               <div className="absolute -bottom-6 -left-6 card p-4 float z-20" style={{ animationDelay: '0.5s' }}>
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-[#c4704f]/10 flex items-center justify-center">
-                    <TrendingUp className="w-5 h-5 text-[#c4704f]" />
+                  <div className="w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center">
+                    <DollarSign className="w-5 h-5 text-emerald-600" />
                   </div>
                   <div>
-                    <p className="font-medium text-sm">Default avoided</p>
-                    <p className="text-xs text-neutral-500">Saved approx. ₹1.2L</p>
+                    <p className="font-medium text-sm">Cash in 48 hours</p>
+                    <p className="text-xs text-neutral-500">No loan. No debt.</p>
                   </div>
                 </div>
               </div>
@@ -165,34 +171,77 @@ export default function Landing() {
         </div>
       </main>
 
-      {/* Why different section */}
+      {/* How It Works section */}
       <section className="px-6 md:px-12 py-20 bg-white/50">
         <div className="max-w-6xl mx-auto">
           <div className="text-center mb-16">
             <h2 className="text-3xl md:text-4xl mb-4">
-              Built different, because we had to be
+              Three steps to cash in your pocket
             </h2>
             <p className="text-neutral-600 max-w-xl mx-auto">
-              After losing ₹3 lakh to a "perfect on paper" tenant, we built the tool we wished existed.
+              No banks, no paperwork nightmare, no waiting months. Get liquidity from what you already own.
             </p>
           </div>
 
           <div className="grid md:grid-cols-3 gap-8">
             {[
               {
+                icon: Building2,
+                title: "Submit your property",
+                description: "Tell us about your rental property and existing tenant. Monthly rent, lease term, payment history — takes 2 minutes."
+              },
+              {
+                icon: Zap,
+                title: "Get an instant offer",
+                description: "Our AI evaluates the rental income reliability and generates a cash offer in seconds. No obligation."
+              },
+              {
+                icon: DollarSign,
+                title: "Receive your cash",
+                description: "Accept the offer and get cash in your account within 48 hours. Keep your property. No debt created."
+              }
+            ].map((feature, i) => (
+              <div key={i} className="card group hover:scale-[1.02] transition-transform duration-300">
+                <div className="w-12 h-12 rounded-xl bg-[#7c9a82]/10 flex items-center justify-center mb-4 group-hover:bg-[#7c9a82]/20 transition-colors">
+                  <feature.icon className="w-6 h-6 text-[#7c9a82]" />
+                </div>
+                <h3 className="text-lg font-medium mb-2" style={{ fontFamily: 'DM Serif Display, serif' }}>
+                  {feature.title}
+                </h3>
+                <p className="text-neutral-600 text-sm leading-relaxed">
+                  {feature.description}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Why Leaseth section */}
+      <section className="px-6 md:px-12 py-20">
+        <div className="max-w-6xl mx-auto">
+          <div className="text-center mb-16">
+            <h2 className="text-3xl md:text-4xl mb-4">
+              Why property owners choose Leaseth
+            </h2>
+          </div>
+
+          <div className="grid md:grid-cols-3 gap-8">
+            {[
+              {
                 icon: Shield,
-                title: "Honest predictions",
-                description: "We don't hide behind black boxes. See exactly which factors drive the score and why they matter."
+                title: "Keep your property",
+                description: "This isn't a loan and you're not selling your property. You're simply selling future rent payments for cash now."
               },
               {
                 icon: Clock,
-                title: "30-second scoring",
-                description: "No credit bureau partnerships needed. Enter what you know, get insights immediately."
+                title: "Cash in 48 hours",
+                description: "No bank approvals, no lengthy paperwork. Submit your property, accept the offer, get paid."
               },
               {
                 icon: TrendingUp,
-                title: "Gets smarter",
-                description: "The model improves as more landlords report outcomes. Community-powered accuracy."
+                title: "Fair, transparent pricing",
+                description: "Our AI evaluates your rental income stream honestly. Better tenant reliability = better rates for you."
               }
             ].map((feature, i) => (
               <div key={i} className="card group hover:scale-[1.02] transition-transform duration-300">
@@ -212,11 +261,11 @@ export default function Landing() {
       </section>
 
       {/* Testimonials */}
-      <section className="px-6 md:px-12 py-20">
+      <section className="px-6 md:px-12 py-20 bg-white/50">
         <div className="max-w-4xl mx-auto">
           <div className="text-center mb-12">
-            <h2 className="text-3xl md:text-4xl mb-4">What landlords actually say</h2>
-            <p className="text-neutral-600">No cherry-picked 5-star reviews. Real feedback.</p>
+            <h2 className="text-3xl md:text-4xl mb-4">What property owners say</h2>
+            <p className="text-neutral-600">Real feedback from landlords who've used Leaseth.</p>
           </div>
 
           <div className="card p-8 md:p-12 relative overflow-hidden">
@@ -267,13 +316,13 @@ export default function Landing() {
 
             <div className="relative z-10">
               <h2 className="text-3xl md:text-4xl text-white mb-4">
-                Your next tenant is waiting
+                Your rental income is worth cash today
               </h2>
               <p className="text-neutral-400 mb-8 max-w-md mx-auto">
-                Free to try. No credit card required. Score your first applicant in under a minute.
+                Free to check. No obligation. See your offer in under a minute.
               </p>
               <Link to="/score" className="inline-flex items-center gap-2 px-8 py-4 rounded-full font-medium transition-all duration-300 bg-white text-[#1a1a18] hover:bg-neutral-100">
-                Start free assessment
+                Get your cash offer
                 <ArrowRight className="w-4 h-4" />
               </Link>
             </div>
@@ -296,7 +345,7 @@ export default function Landing() {
             <span className="hover:text-neutral-800 cursor-pointer transition-colors">Terms</span>
           </div>
           <div className="text-xs text-neutral-400">
-            Made with caffeine in India
+            Empowering landlords worldwide
           </div>
         </div>
       </footer>

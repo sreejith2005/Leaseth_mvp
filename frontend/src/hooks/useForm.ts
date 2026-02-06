@@ -21,9 +21,11 @@ const defaultFormData: FormData = {
   on_time_payments_percent: 90,
   late_payments_count: 0,
   lease_term_months: 12,
+  months_to_sell: 12,
   bedrooms: 2,
   property_type: 'apartment',
-  location: 'Mumbai',
+  location: '',
+  property_address: '',
 }
 
 export function useForm(initialData: FormData = defaultFormData) {

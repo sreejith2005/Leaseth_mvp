@@ -51,13 +51,13 @@ class User(Base):
 
 
 class Application(Base):
-    """Applicant application model"""
+    """Property submission for rental income advance evaluation"""
     __tablename__ = "applications"
     
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, index=True, nullable=False)
-    applicant_id = Column(String(100), index=True, nullable=False)
-    applicant_name = Column(String(255), nullable=False)
+    applicant_id = Column(String(100), index=True, nullable=False)  # submission_id
+    applicant_name = Column(String(255), nullable=False)  # tenant_name
     applicant_email = Column(String(255), nullable=True)
     monthly_income = Column(Float, nullable=False)
     monthly_rent = Column(Float, nullable=False)
@@ -66,13 +66,15 @@ class Application(Base):
     previous_evictions = Column(Integer, default=0)
     employment_verified = Column(Boolean, default=False)
     income_verified = Column(Boolean, default=False)
+    property_address = Column(String(500), nullable=True)
+    months_to_sell = Column(Integer, default=12)
     raw_data = Column(JSON, nullable=True)  # Store full input JSON
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
 class Score(Base):
-    """Risk score results model"""
+    """Risk score and offer results model"""
     __tablename__ = "scores"
     
     id = Column(Integer, primary_key=True, index=True)
@@ -86,6 +88,14 @@ class Score(Base):
     risk_category = Column(String(50), nullable=False)  # LOW, MEDIUM, HIGH
     recommendation = Column(String(100), nullable=False)  # APPROVE, REQUEST_INFO, REJECT
     confidence_score = Column(Float, nullable=False)
+    
+    # Offer details (rental income advance)
+    reliability_score = Column(Integer, default=0)  # 100 - risk_score
+    offer_status = Column(String(50), default="NO_OFFER")  # OFFERED, NO_OFFER
+    offer_amount = Column(Float, default=0.0)  # Cash offer amount
+    gross_rental_value = Column(Float, default=0.0)  # Total value of rent stream
+    discount_rate = Column(Float, default=0.0)  # Discount percentage
+    months_purchased = Column(Integer, default=0)  # Months of rent purchased
     
     # Model metadata
     model_version = Column(String(50), nullable=False)  # V1_2025_11

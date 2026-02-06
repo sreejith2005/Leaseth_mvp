@@ -1,5 +1,5 @@
 import { clsx } from 'clsx'
-import { RiskCategory, Recommendation } from '../../types'
+import { RiskCategory, OfferStatus, ReliabilityCategory } from '../../types'
 
 interface BadgeProps {
   children: React.ReactNode
@@ -41,13 +41,6 @@ export default function Badge({
   )
 }
 
-function getBaseRecommendation(recommendation: string): 'APPROVE' | 'MANUAL_REVIEW' | 'REJECT' {
-  if (recommendation.startsWith('MANUAL_REVIEW')) return 'MANUAL_REVIEW'
-  if (recommendation === 'APPROVE') return 'APPROVE'
-  if (recommendation === 'REJECT') return 'REJECT'
-  return 'MANUAL_REVIEW'
-}
-
 export function RiskBadge({ category, size = 'md' }: { category: RiskCategory; size?: 'sm' | 'md' | 'lg' }) {
   const variantMap: Record<RiskCategory, 'success' | 'warning' | 'danger'> = {
     LOW: 'success',
@@ -68,24 +61,49 @@ export function RiskBadge({ category, size = 'md' }: { category: RiskCategory; s
   )
 }
 
-export function RecommendationBadge({ recommendation, size = 'md' }: { recommendation: Recommendation; size?: 'sm' | 'md' | 'lg' }) {
-  const baseRec = getBaseRecommendation(recommendation)
-
-  const variantMap: Record<string, 'success' | 'warning' | 'danger'> = {
-    APPROVE: 'success',
-    MANUAL_REVIEW: 'warning',
-    REJECT: 'danger',
+export function OfferStatusBadge({ status, size = 'md' }: { status: OfferStatus; size?: 'sm' | 'md' | 'lg' }) {
+  const variantMap: Record<OfferStatus, 'success' | 'danger'> = {
+    OFFERED: 'success',
+    NO_OFFER: 'danger',
   }
 
-  const labelMap: Record<string, string> = {
-    APPROVE: 'Approve',
-    MANUAL_REVIEW: 'Review',
-    REJECT: 'Reject',
+  const labelMap: Record<OfferStatus, string> = {
+    OFFERED: 'Offer available',
+    NO_OFFER: 'No offer',
   }
 
   return (
-    <Badge variant={variantMap[baseRec]} size={size}>
-      {labelMap[baseRec]}
+    <Badge variant={variantMap[status]} size={size}>
+      {labelMap[status]}
+    </Badge>
+  )
+}
+
+export function ReliabilityBadge({ category, size = 'md' }: { category: ReliabilityCategory; size?: 'sm' | 'md' | 'lg' }) {
+  const variantMap: Record<ReliabilityCategory, 'success' | 'warning' | 'danger'> = {
+    HIGH: 'success',
+    MEDIUM: 'warning',
+    LOW: 'danger',
+  }
+
+  const labelMap: Record<ReliabilityCategory, string> = {
+    HIGH: 'High reliability',
+    MEDIUM: 'Medium reliability',
+    LOW: 'Low reliability',
+  }
+
+  return (
+    <Badge variant={variantMap[category]} size={size}>
+      {labelMap[category]}
+    </Badge>
+  )
+}
+
+/** @deprecated - kept for backward compat with old components */
+export function RecommendationBadge({ recommendation, size = 'md' }: { recommendation: string; size?: 'sm' | 'md' | 'lg' }) {
+  return (
+    <Badge variant="default" size={size}>
+      {recommendation}
     </Badge>
   )
 }

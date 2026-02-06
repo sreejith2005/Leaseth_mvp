@@ -35,7 +35,7 @@ npm run dev
 
 Open [http://localhost:5173](http://localhost:5173) to view in browser.
 
-### Build
+### Build (Production)
 
 ```bash
 npm run build
@@ -48,6 +48,48 @@ Builds to `dist/` folder.
 ```bash
 npm run preview
 ```
+
+## Environment-Based API URL Switching
+
+**The API URL switches automatically — no manual code changes needed.**
+
+| Command | Env file | API URL |
+|---|---|---|
+| `npm run dev` | `.env.development` | `http://localhost:8000` |
+| `npm run build` | `.env.production` | `https://sreejithm-leaseth-mvp.hf.space` |
+
+### How it works
+
+Vite loads the matching `.env.*` file based on the command:
+
+- **`.env.development`** — used during local dev (`npm run dev`). **Gitignored** — never pushed to GitHub.
+- **`.env.production`** — used for builds (`npm run build`). **Committed** — always points to the public API.
+- **`.env.example`** — reference for new developers.
+
+The API service reads the URL from:
+```ts
+// src/services/api.ts
+const API_URL = import.meta.env.VITE_API_URL || 'https://sreejithm-leaseth-mvp.hf.space'
+```
+
+### Setup for local development
+
+The `.env.development` file should already exist. If not, create it:
+```bash
+# frontend/.env.development
+VITE_API_URL=http://localhost:8000
+```
+
+> **Rule**: Never hardcode `localhost` in source files. Always use `import.meta.env.VITE_API_URL`.
+
+## Multi-Currency Support
+
+The app supports 18 global currencies with browser locale auto-detection.
+
+- **Currency selector** in the landing page nav (flag emoji dropdown)
+- **Persisted** to localStorage — survives page refreshes
+- **All monetary values** formatted via `useCurrency().formatCurrency(amount)` using `Intl.NumberFormat`
+- Supported: USD, EUR, GBP, AED, SAR, CHF, CAD, AUD, INR, JPY, SGD, SEK, NOK, DKK, PLN, BRL, MXN, ZAR
 
 ## Project Structure
 

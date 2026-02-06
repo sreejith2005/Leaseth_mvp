@@ -2,8 +2,8 @@ import { z } from 'zod'
 
 // Base schema without refinement for single-field validation
 const baseApplicantSchema = z.object({
-  applicant_id: z.string().min(1, 'Applicant ID is required'),
-  name: z.string().min(2, 'Name must be at least 2 characters'),
+  applicant_id: z.string().min(1, 'Submission ID is required'),
+  name: z.string().min(2, 'Tenant name must be at least 2 characters'),
   age: z.number().min(18, 'Must be at least 18 years old').max(120, 'Invalid age'),
   monthly_income: z.number().min(0, 'Income cannot be negative'),
   credit_score: z.number().min(300, 'Credit score must be at least 300').max(850, 'Credit score cannot exceed 850'),
@@ -16,18 +16,20 @@ const baseApplicantSchema = z.object({
   previous_evictions: z.number().min(0, 'Cannot be negative'),
   on_time_payments_percent: z.number().min(0).max(100),
   late_payments_count: z.number().min(0, 'Cannot be negative'),
-  lease_term_months: z.number().min(1),
+  lease_term_months: z.number().min(1, 'At least 1 month remaining'),
+  months_to_sell: z.number().min(1, 'Must sell at least 1 month').max(60, 'Cannot exceed 60 months'),
   bedrooms: z.number().min(1).max(10),
   property_type: z.enum(['apartment', 'house', 'condo', 'townhouse', 'studio']),
   location: z.string().min(1, 'Location is required'),
+  property_address: z.string().optional(),
 })
 
 // Full schema with cross-field validation
 export const applicantSchema = baseApplicantSchema.refine(
-  (data) => data.monthly_rent <= data.monthly_income * 2,
+  (data) => data.months_to_sell <= data.lease_term_months,
   {
-    message: 'Monthly rent should not exceed 2x monthly income',
-    path: ['monthly_rent'],
+    message: 'Months to sell cannot exceed remaining lease term',
+    path: ['months_to_sell'],
   }
 )
 
@@ -35,8 +37,8 @@ export type ApplicantFormData = z.infer<typeof applicantSchema>
 
 // Field schemas for individual validation
 const fieldSchemas: Record<string, z.ZodTypeAny> = {
-  applicant_id: z.string().min(1, 'Applicant ID is required'),
-  name: z.string().min(2, 'Name must be at least 2 characters'),
+  applicant_id: z.string().min(1, 'Submission ID is required'),
+  name: z.string().min(2, 'Tenant name must be at least 2 characters'),
   age: z.number().min(18, 'Must be at least 18 years old').max(120, 'Invalid age'),
   monthly_income: z.number().min(0, 'Income cannot be negative'),
   credit_score: z.number().min(300, 'Credit score must be at least 300').max(850, 'Credit score cannot exceed 850'),
@@ -49,10 +51,12 @@ const fieldSchemas: Record<string, z.ZodTypeAny> = {
   previous_evictions: z.number().min(0, 'Cannot be negative'),
   on_time_payments_percent: z.number().min(0).max(100),
   late_payments_count: z.number().min(0, 'Cannot be negative'),
-  lease_term_months: z.number().min(1),
+  lease_term_months: z.number().min(1, 'At least 1 month remaining'),
+  months_to_sell: z.number().min(1, 'Must sell at least 1 month').max(60, 'Cannot exceed 60 months'),
   bedrooms: z.number().min(1).max(10),
   property_type: z.enum(['apartment', 'house', 'condo', 'townhouse', 'studio']),
   location: z.string().min(1, 'Location is required'),
+  property_address: z.string().optional(),
 }
 
 export function validateField(
@@ -66,11 +70,11 @@ export function validateField(
       schema.parse(value)
     }
 
-    // Additional cross-field validation for rent vs income
-    if (field === 'monthly_rent' && formData.monthly_income !== undefined) {
-      const rent = value as number
-      if (rent > (formData.monthly_income || 0) * 2) {
-        return 'Monthly rent should not exceed 2x monthly income'
+    // Cross-field: months_to_sell cannot exceed lease_term_months
+    if (field === 'months_to_sell' && formData.lease_term_months !== undefined) {
+      const months = value as number
+      if (months > (formData.lease_term_months || 60)) {
+        return 'Cannot exceed remaining lease term'
       }
     }
 
@@ -101,5 +105,5 @@ export function validateForm(data: unknown): { success: boolean; errors: Record<
 }
 
 export function generateApplicantId(): string {
-  return `APP-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`
+  return `SUB-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`
 }
