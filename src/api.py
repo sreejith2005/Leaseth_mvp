@@ -170,7 +170,7 @@ async def register(request: RegisterRequest, db = Depends(get_db)):
     db.refresh(user)
     
     # Generate token
-    access_token = create_access_token(user.id, user.username)
+    access_token = create_access_token(int(user.id), str(user.username))
     
     return {
         "access_token": access_token,
@@ -194,7 +194,7 @@ async def login(request: LoginRequest, db = Depends(get_db)):
             detail="Invalid username or password"
         )
     
-    access_token = create_access_token(user.id, user.username)
+    access_token = create_access_token(int(user.id), str(user.username))
     
     return {
         "access_token": access_token,
