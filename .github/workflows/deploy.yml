@@ -47,5 +47,3 @@ jobs:
       run: |
         pip install mypy
         mypy src --ignore-missing-imports
-        text: 'Leaseth API Deployment ${{ job.status }}'
-        webhook_url: ${{ secrets.SLACK_WEBHOOK }}
