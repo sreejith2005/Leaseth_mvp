@@ -170,7 +170,7 @@ async def register(request: RegisterRequest, db = Depends(get_db)):
     db.refresh(user)
     
     # Generate token
-    access_token = create_access_token({"user_id": user.id, "username": user.username})
+    access_token = create_access_token(user.id, user.username)
     
     return {
         "access_token": access_token,
@@ -188,13 +188,13 @@ async def login(request: LoginRequest, db = Depends(get_db)):
     """User login"""
     user = db.query(User).filter(User.username == request.username).first()
     
-    if not user or not verify_password(request.password, user.password_hash):
+    if not user or not verify_password(request.password, str(user.password_hash)):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid username or password"
         )
     
-    access_token = create_access_token({"user_id": user.id, "username": user.username})
+    access_token = create_access_token(user.id, user.username)
     
     return {
         "access_token": access_token,
