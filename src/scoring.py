@@ -61,17 +61,22 @@ def load_models():
         raise
 
 
-def _calibrate_probability(prob: float, model_type: str = "V3") -> float:
+def _calibrate_probability(prob: float, model_type: str = "V3", is_v1: bool = False) -> float:
     """
     Apply Platt scaling calibration to raw model probability.
     
     Args:
         prob: Raw probability from model
         model_type: "V1" or "V3"
+        is_v1: Alternative way to specify V1 model (for backwards compatibility)
         
     Returns:
         Calibrated probability
     """
+    # Support both is_v1 boolean and model_type string
+    if is_v1:
+        model_type = "V1"
+    
     # Placeholder calibration coefficients
     # In production, these should be computed from a validation set
     if model_type == "V1":
@@ -81,6 +86,20 @@ def _calibrate_probability(prob: float, model_type: str = "V3") -> float:
     
     calibrated = 1.0 / (1.0 + np.exp(-(a * np.log(prob / (1 - prob + 1e-10)) + b)))
     return float(calibrated)
+
+
+def _calculate_confidence(prob: float) -> float:
+    """
+    Calculate confidence score from probability.
+    Confidence is the distance from the decision boundary (0.5).
+    
+    Args:
+        prob: Calibrated probability
+        
+    Returns:
+        Confidence score (0-1, where 1 is most confident)
+    """
+    return abs(prob - 0.5) * 2
 
 
 def predict_and_score(
@@ -179,7 +198,7 @@ def predict_and_score(
         reasoning = f"Reliability score {reliability_score}/100 below minimum threshold (40). Income stream too risky for purchase."
     
     # Confidence (distance from decision boundary)
-    confidence = abs(prob - 0.5) * 2
+    confidence = _calculate_confidence(prob)
     
     result = {
         "risk_score": risk_score,

@@ -23,6 +23,21 @@ def create_new_features(df: pd.DataFrame) -> pd.DataFrame:
     # Make a copy to avoid modifying the original
     df = df.copy()
     
+    # Fill missing columns with defaults
+    defaults = {
+        'employment_verified': 0,
+        'income_verified': 0,
+        'rental_history_years': 0,
+        'lease_term_months': 12,
+        'credit_score': 650,
+        'on_time_payments_percent': 90,
+        'late_payments_count': 0,
+    }
+    
+    for col, default_val in defaults.items():
+        if col not in df.columns:
+            df[col] = default_val
+    
     # Composite financial indicators
     df['rent_to_income_ratio'] = df['monthly_rent'] / df['monthly_income'].replace(0, 1)
     
