@@ -81,11 +81,7 @@ def get_current_user(token: str, db: Session) -> Optional[User]:
     if not payload:
         return None
     
-    sub = payload.get("sub")
-    if sub is None:
-        return None
-    
-    user_id = int(sub)
+    user_id = int(payload.get("sub"))
     user = db.query(User).filter(User.id == user_id).first()
     
     if not user or not user.is_active:
@@ -98,7 +94,7 @@ def get_current_user(token: str, db: Session) -> Optional[User]:
 # User Management
 # ============================================================
 
-def create_user(db: Session, username: str, email: str, password: str, full_name: Optional[str] = None) -> User:
+def create_user(db: Session, username: str, email: str, password: str, full_name: str = None) -> User:
     """Create new user"""
     # Check if user exists
     existing_user = db.query(User).filter(
@@ -133,7 +129,7 @@ def authenticate_user(db: Session, username: str, password: str) -> Optional[Use
         logger.warning(f"Login attempt for non-existent user: {username}")
         return None
     
-    if not verify_password(password, str(user.password_hash)):
+    if not verify_password(password, user.password_hash):
         logger.warning(f"Failed login for user: {username}")
         return None
     

@@ -55,32 +55,17 @@ PROPERTY_TYPE_MAP = {
     'studio': 2, 'Studio': 2,
     'villa': 3, 'Villa': 3,
     'house': 3, 'House': 3,
-    'townhouse': 4, 'Townhouse': 4,
     'unknown': 0, 'Unknown': 0
 }
 
-# City mapping (global cities from frontend + legacy Indian cities)
+# City mapping
 CITY_MAP = {
-    'London': 0, 'london': 0,
-    'Dubai': 1, 'dubai': 1,
-    'New York': 2, 'new york': 2,
-    'Berlin': 3, 'berlin': 3,
-    'Paris': 4, 'paris': 4,
-    'Toronto': 5, 'toronto': 5,
-    'Sydney': 6, 'sydney': 6,
-    'Singapore': 7, 'singapore': 7,
-    'Amsterdam': 8, 'amsterdam': 8,
-    'Zurich': 9, 'zurich': 9,
-    'Mumbai': 10, 'mumbai': 10,
-    'São Paulo': 11, 'são paulo': 11, 'Sao Paulo': 11, 'sao paulo': 11,
-    'Tokyo': 12, 'tokyo': 12,
-    'Riyadh': 13, 'riyadh': 13,
-    'Other': 0, 'other': 0,
-    'Bangalore': 0, 'bangalore': 0,
-    'Delhi': 1, 'delhi': 1,
-    'Hyderabad': 2, 'hyderabad': 2,
-    'Pune': 4, 'pune': 4,
-    'Chennai': 0, 'chennai': 0,
+    'bangalore': 0, 'Bangalore': 0,
+    'delhi': 1, 'Delhi': 1,
+    'hyderabad': 2, 'Hyderabad': 2,
+    'mumbai': 3, 'Mumbai': 3,
+    'pune': 4, 'Pune': 4,
+    'chennai': 0, 'Chennai': 0,
     'unknown': 0, 'Unknown': 0
 }
 
@@ -133,12 +118,9 @@ class ApplicantInput(BaseModel):
     
     # Property
     lease_term_months: int = Field(default=12, ge=1, le=60)
-    months_to_sell: int = Field(default=12, ge=1, le=60, description="Months of rent to sell")
     bedrooms: int = Field(default=1, ge=1)
     property_type: str = Field(default="apartment", description="Property type")
     location: str = Field(default="Mumbai", description="City/Location")
-    property_address: str = Field(default="", description="Property address")
-    currency: Optional[str] = Field(default="USD", description="Currency code")
     
     # Market Context
     market_median_rent: float = Field(default=0, ge=0)
@@ -157,90 +139,6 @@ class ScoringResponse(BaseModel):
     confidence: float  # 0-1
     reasoning: str
     
-    # Offer details (required by frontend)
-    reliability_score: int = 0         # 0-100 (inverted risk: higher = more reliable)
-    offer_status: str = "NO_OFFER"     # OFFERED or NO_OFFER
-    offer_amount: float = 0.0          # Cash offer amount
-    gross_rental_value: float = 0.0    # Total value of rent stream
-    discount_rate: float = 0.0         # Discount percentage applied
-    discount_amount: float = 0.0       # Amount discounted
-    months_purchased: int = 0          # Months of rent being purchased
-    
-
-# ============================================================
-# Offer Calculation (inline, no external imports needed)
-# ============================================================
-
-MIN_RELIABILITY_THRESHOLD = 30  # Lenient: most applicants except high-risk get offers
-BASE_DISCOUNT_RATE = 0.10
-RISK_PREMIUM_PER_POINT = 0.004
-MAX_DISCOUNT_RATE = 0.45
-
-PROPERTY_TYPE_ADJUSTMENTS = {
-    'apartment': 0.00, 'house': -0.02, 'condo': 0.01,
-    'townhouse': -0.01, 'studio': 0.02, 'villa': -0.02,
-}
-
-def calculate_inline_offer(
-    monthly_rent: float,
-    months_to_sell: int,
-    reliability_score: int,
-    property_type: str = "apartment",
-    lease_term_months: int = 12,
-    credit_score: int = 650,
-    on_time_payments_pct: float = 90.0,
-) -> dict:
-    """Calculate a cash offer for purchasing a rental income stream."""
-    gross_value = monthly_rent * months_to_sell
-
-    if reliability_score < MIN_RELIABILITY_THRESHOLD:
-        return {
-            'offer_amount': 0, 'gross_rental_value': gross_value,
-            'discount_rate': 0, 'discount_amount': 0, 'offer_status': 'NO_OFFER',
-        }
-
-    risk_points = 100 - reliability_score
-    base_discount = BASE_DISCOUNT_RATE + (risk_points * RISK_PREMIUM_PER_POINT)
-    base_discount += PROPERTY_TYPE_ADJUSTMENTS.get(property_type.lower(), 0.0)
-
-    # Lease term adjustment
-    if lease_term_months >= 24:
-        base_discount -= 0.03
-    elif lease_term_months >= 12:
-        base_discount -= 0.01
-    elif lease_term_months < 6:
-        base_discount += 0.03
-
-    # Payment history bonus
-    if on_time_payments_pct >= 95:
-        base_discount -= 0.02
-    elif on_time_payments_pct >= 85:
-        base_discount -= 0.01
-
-    # Credit score bonus
-    if credit_score >= 750:
-        base_discount -= 0.02
-    elif credit_score >= 700:
-        base_discount -= 0.01
-
-    # Volume bonus
-    if months_to_sell >= 18:
-        base_discount -= 0.01
-    elif months_to_sell <= 3:
-        base_discount += 0.02
-
-    final_discount = max(0.05, min(MAX_DISCOUNT_RATE, base_discount))
-    discount_amount = gross_value * final_discount
-    offer_amount = gross_value - discount_amount
-
-    return {
-        'offer_amount': round(offer_amount, 2),
-        'gross_rental_value': gross_value,
-        'discount_rate': round(final_discount, 4),
-        'discount_amount': round(discount_amount, 2),
-        'offer_status': 'OFFERED',
-    }
-
 
 # ============================================================
 # Main Scoring Endpoint
@@ -268,7 +166,6 @@ async def score_applicant(applicant: ApplicantInput):
         # If Stage 1 says immediate reject (3+ evictions with poor credit)
         if stage1_decision == 'REJECT':
             logger.info(f"Stage 1 REJECT for {applicant.applicant_id}: {eviction_reasoning}")
-            months_to_sell = getattr(applicant, 'months_to_sell', applicant.lease_term_months)
             return ScoringResponse(
                 success=True,
                 applicant_id=applicant.applicant_id,
@@ -277,14 +174,7 @@ async def score_applicant(applicant: ApplicantInput):
                 default_probability=0.95,
                 recommendation='REJECT',
                 confidence=0.90,
-                reasoning=eviction_reasoning,
-                reliability_score=5,
-                offer_status='NO_OFFER',
-                offer_amount=0,
-                gross_rental_value=applicant.monthly_rent * months_to_sell,
-                discount_rate=0,
-                discount_amount=0,
-                months_purchased=0,
+                reasoning=eviction_reasoning
             )
         
         # ============================================================
@@ -327,34 +217,11 @@ async def score_applicant(applicant: ApplicantInput):
         decision = make_decision(final_probability, risk_score, features, combined_reasoning)
         
         # Log detailed scoring info
-        income_ratio = features['monthly_income'] / features['monthly_rent'] if features['monthly_rent'] > 0 else 10
         logger.info(
             f"Scored {applicant.applicant_id}: "
-            f"Income/Rent={income_ratio:.1f}x, "
             f"Base={base_probability:.2%}, Calibrated={calibrated_probability:.2%}, "
             f"Eviction+={eviction_penalty:.2%}, Final={final_probability:.2%} ({risk_score}%), "
             f"Rec={decision['recommendation']}"
-        )
-        
-        # ============================================================
-        # OFFER CALCULATION
-        # ============================================================
-        reliability_score = max(0, min(100, 100 - risk_score))
-        months_to_sell = getattr(applicant, 'months_to_sell', applicant.lease_term_months)
-        offer = calculate_inline_offer(
-            monthly_rent=applicant.monthly_rent,
-            months_to_sell=months_to_sell,
-            reliability_score=reliability_score,
-            property_type=applicant.property_type,
-            lease_term_months=applicant.lease_term_months,
-            credit_score=applicant.credit_score,
-            on_time_payments_pct=applicant.on_time_payments_percent,
-        )
-        
-        logger.info(
-            f"Offer for {applicant.applicant_id}: "
-            f"reliability={reliability_score}, status={offer['offer_status']}, "
-            f"amount={offer['offer_amount']:,.0f}"
         )
         
         return ScoringResponse(
@@ -365,14 +232,7 @@ async def score_applicant(applicant: ApplicantInput):
             default_probability=final_probability,
             recommendation=decision['recommendation'],
             confidence=abs(final_probability - 0.5) * 2,  # Higher confidence at extremes
-            reasoning=decision['reasoning'],
-            reliability_score=reliability_score,
-            offer_status=offer['offer_status'],
-            offer_amount=offer['offer_amount'],
-            gross_rental_value=offer['gross_rental_value'],
-            discount_rate=offer['discount_rate'],
-            discount_amount=offer['discount_amount'],
-            months_purchased=months_to_sell if offer['offer_status'] == 'OFFERED' else 0,
+            reasoning=decision['reasoning']
         )
         
     except HTTPException:
@@ -388,19 +248,15 @@ async def score_applicant(applicant: ApplicantInput):
 
 def calibrate_probability(raw_prob: float, features: dict) -> float:
     """
-    Calibrate raw model probability using financial strength AND rent burden.
+    Calibrate raw model probability to be more lenient while preserving ordering.
     
-    The XGBoost model was trained on synthetic data and underweights the
-    income-to-rent ratio. This calibration compensates by:
-    1. REDUCING probability for genuinely strong profiles (high credit, income, verified)
-    2. INCREASING probability when rent burden is dangerously high (income barely covers rent)
+    The model was trained on synthetic data that may overestimate default risk.
+    This calibration:
+    1. Applies a sigmoid compression to reduce extreme predictions
+    2. Gives credit to applicants with strong financial profiles
     
-    This ensures:
-    - Excellent profiles (750+ credit, 5x income, verified) → significant reduction
-    - Good profiles (700+ credit, 4x income) → moderate reduction
-    - Average profiles → model output preserved (no change)
-    - High rent burden (income < 2x rent) → explicit penalty added
-    - Extreme rent burden (income ≈ rent) → large penalty (near-certain default)
+    The goal is to make the model more lenient for borderline cases
+    while still being strict for truly risky applicants.
     """
     
     # Calculate financial strength indicators
@@ -409,79 +265,47 @@ def calibrate_probability(raw_prob: float, features: dict) -> float:
     credit = features['credit_score']
     income_ratio = income / rent if rent > 0 else 10
     
-    # ================================================================
-    # STEP 1: Financial strength reduction (rewards strong profiles)
-    # ================================================================
-    # Lenient approach: give meaningful credit for good-to-average profiles
-    # so more applicants qualify. Only truly weak profiles get no bonus.
+    # Financial strength score (0-1)
+    # Higher = stronger financial profile = more leniency
     financial_strength = 0.0
     
-    # Income ratio bonus (generous — 3x income is standard industry threshold)
+    # Income ratio bonus (3x+ income is strong)
     if income_ratio >= 5:
-        financial_strength += 0.30  # Very strong
+        financial_strength += 0.3  # Very strong
     elif income_ratio >= 4:
-        financial_strength += 0.22  # Strong
+        financial_strength += 0.2  # Strong
     elif income_ratio >= 3:
-        financial_strength += 0.15  # Standard (meets 3x rule)
-    elif income_ratio >= 2.5:
-        financial_strength += 0.05  # Below standard but not terrible
-    # Below 2.5x: no bonus
+        financial_strength += 0.1  # Adequate
     
-    # Credit score bonus (lenient — give credit starting at 620)
+    # Credit score bonus
     if credit >= 750:
-        financial_strength += 0.20  # Excellent credit
+        financial_strength += 0.2  # Excellent
     elif credit >= 700:
-        financial_strength += 0.15  # Good credit
+        financial_strength += 0.15  # Good
     elif credit >= 670:
-        financial_strength += 0.10  # Fair credit
+        financial_strength += 0.1  # Fair
     elif credit >= 620:
         financial_strength += 0.05  # Subprime but not terrible
-    # Below 620: no credit bonus
     
     # Verification bonus
     if features['employment_verified'] and features['income_verified']:
-        financial_strength += 0.10  # Both verified — strong signal
+        financial_strength += 0.1  # Both verified
     elif features['employment_verified'] or features['income_verified']:
-        financial_strength += 0.05  # One verified — partial signal
-    # Unverified: no bonus
+        financial_strength += 0.05  # One verified
     
-    # Cap financial strength at 0.55 (max 33% probability reduction)
-    financial_strength = min(0.55, financial_strength)
+    # Cap financial strength at 0.5 (max reduction)
+    financial_strength = min(0.5, financial_strength)
     
-    # Apply financial strength reduction
+    # Apply leniency reduction based on financial strength
+    # Strong profiles get probability reduced, weak profiles stay same
     calibrated = raw_prob * (1.0 - financial_strength * 0.6)
     
-    # ================================================================
-    # STEP 2: Rent burden penalty (penalizes high rent-to-income)
-    # ================================================================
-    # The ML model doesn't adequately differentiate on income alone.
-    # When rent consumes a large portion of income, default risk rises sharply,
-    # regardless of what the model predicts. This is a well-known financial rule:
-    # - Healthy: rent < 30% of income (ratio > 3.3x)
-    # - Stretched: rent 30-40% of income (ratio 2.5-3.3x)
-    # - Burdened: rent 40-50% of income (ratio 2.0-2.5x)
-    # - Severely burdened: rent > 50% of income (ratio < 2.0x)
+    # Also apply general scaling to be more lenient
+    # Compress the probability range: 0-1 becomes roughly 0-0.8
+    calibrated = calibrated * 0.85
     
-    rent_burden_penalty = 0.0
-    
-    if income_ratio < 1.5:
-        # EXTREME: rent is 67%+ of income — near-impossible to sustain
-        rent_burden_penalty = 0.20
-    elif income_ratio < 2.0:
-        # SEVERE: rent is 50-67% of income — high default risk
-        rent_burden_penalty = 0.12
-    elif income_ratio < 2.5:
-        # BURDENED: rent is 40-50% of income — moderate concern
-        rent_burden_penalty = 0.05
-    # ratio >= 2.5: no penalty (manageable rent burden)
-    
-    calibrated = calibrated + rent_burden_penalty
-    
-    # ================================================================
-    # Final bounds
-    # ================================================================
-    # Ensure probability stays in valid range
-    calibrated = max(0.05, min(0.99, calibrated))
+    # Ensure we don't go below a minimum (maintain some risk assessment)
+    calibrated = max(0.05, calibrated)
     
     return calibrated
 
@@ -670,16 +494,16 @@ def make_decision(probability: float, risk_score: int, features: dict, eviction_
     
     base_reasoning = eviction_reasoning
     
-    # LOW RISK: < 45% probability — lenient to accept good/medium tenants
-    if probability < 0.45:
+    # LOW RISK: < 38% probability (more lenient than before)
+    if probability < 0.38:
         return {
             'risk_category': 'LOW',
             'recommendation': 'APPROVE',
             'reasoning': f'Low default risk ({probability:.1%}). Strong applicant profile. {base_reasoning}'
         }
     
-    # HIGH RISK: > 72% probability OR severe eviction + poor credit
-    elif probability > 0.72 or (evictions >= 3 and credit < 620):
+    # HIGH RISK: > 65% probability OR severe eviction + poor credit
+    elif probability > 0.65 or (evictions >= 3 and credit < 620):
         return {
             'risk_category': 'HIGH',
             'recommendation': 'REJECT',

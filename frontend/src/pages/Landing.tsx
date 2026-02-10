@@ -27,7 +27,7 @@ const testimonials = [
 
 export default function Landing() {
   const [activeTestimonial, setActiveTestimonial] = useState(0)
-  const { formatCurrency } = useCurrency()
+  const { formatCurrency, symbol } = useCurrency()
 
   useEffect(() => {
     const timer = setInterval(() => {

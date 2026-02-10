@@ -27,7 +27,7 @@ export interface ApplicantInput {
   bedrooms: number;
   property_type: 'apartment' | 'house' | 'condo' | 'townhouse' | 'studio';
   location: string;
-  property_address?: string;     // Property address (optional)
+  property_address: string;      // Property address
   currency?: string;             // ISO 4217 currency code (e.g. "USD", "EUR")
 }
 

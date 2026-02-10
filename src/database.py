@@ -3,7 +3,8 @@ Database configuration and session management
 """
 
 from sqlalchemy import create_engine, Column, Integer, String, Float, Boolean, DateTime, JSON, Text
-from sqlalchemy.orm import sessionmaker, Session, DeclarativeBase
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker, Session
 from datetime import datetime
 from src.config import settings
 
@@ -19,8 +20,7 @@ engine = create_engine(
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 # Base class for models
-class Base(DeclarativeBase):
-    pass
+Base = declarative_base()
 
 # Dependency for getting DB session
 def get_db():
