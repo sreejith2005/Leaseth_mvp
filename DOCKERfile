@@ -12,9 +12,10 @@ RUN apt-get update && apt-get install -y \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application
+# Copy application and all dependencies
 COPY app.py app.py
 COPY models/ models/
+COPY src/ src/
 
 # Hugging Face expects port 7860
 EXPOSE 7860

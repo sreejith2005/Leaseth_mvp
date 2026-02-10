@@ -61,17 +61,34 @@ PROPERTY_TYPE_MAP = {
     'studio': 2, 'Studio': 2,
     'villa': 3, 'Villa': 3,
     'house': 3, 'House': 3,
+    'townhouse': 4, 'Townhouse': 4,
     'unknown': 0, 'Unknown': 0
 }
 
-# City mapping
+# City mapping (global cities from frontend + legacy Indian cities)
 CITY_MAP = {
-    'bangalore': 0, 'Bangalore': 0,
-    'delhi': 1, 'Delhi': 1,
-    'hyderabad': 2, 'Hyderabad': 2,
-    'mumbai': 3, 'Mumbai': 3,
-    'pune': 4, 'Pune': 4,
-    'chennai': 0, 'Chennai': 0,
+    # Global cities (from frontend)
+    'London': 0, 'london': 0,
+    'Dubai': 1, 'dubai': 1,
+    'New York': 2, 'new york': 2,
+    'Berlin': 3, 'berlin': 3,
+    'Paris': 4, 'paris': 4,
+    'Toronto': 5, 'toronto': 5,
+    'Sydney': 6, 'sydney': 6,
+    'Singapore': 7, 'singapore': 7,
+    'Amsterdam': 8, 'amsterdam': 8,
+    'Zurich': 9, 'zurich': 9,
+    'Mumbai': 10, 'mumbai': 10,
+    'São Paulo': 11, 'são paulo': 11, 'Sao Paulo': 11, 'sao paulo': 11,
+    'Tokyo': 12, 'tokyo': 12,
+    'Riyadh': 13, 'riyadh': 13,
+    'Other': 0, 'other': 0,
+    # Legacy Indian cities
+    'Bangalore': 0, 'bangalore': 0,
+    'Delhi': 1, 'delhi': 1,
+    'Hyderabad': 2, 'hyderabad': 2,
+    'Pune': 4, 'pune': 4,
+    'Chennai': 0, 'chennai': 0,
     'unknown': 0, 'Unknown': 0
 }
 
@@ -142,6 +159,7 @@ class ApplicantInput(BaseModel):
     property_type: str = Field(default="apartment", description="Property type")
     location: str = Field(default="Mumbai", description="City/Location")
     property_address: str = Field(default="", description="Property address")
+    currency: Optional[str] = Field(default="USD", description="Currency code")
     
     # Market Context
     market_median_rent: float = Field(default=0, ge=0)
@@ -309,6 +327,28 @@ async def score_applicant(applicant: ApplicantInput, db: Session = Depends(get_d
         # Calculate inference time
         inference_time_ms = (time.time() - start_time) * 1000
 
+        # ============================================================
+        # OFFER CALCULATION (must happen BEFORE db persist)
+        # ============================================================
+        reliability_score = max(0, min(100, 100 - risk_score))
+        months_to_sell = getattr(applicant, 'months_to_sell', applicant.lease_term_months)
+        
+        offer = calculate_offer(
+            monthly_rent=applicant.monthly_rent,
+            months_to_sell=months_to_sell,
+            reliability_score=reliability_score,
+            property_type=applicant.property_type,
+            lease_term_months=applicant.lease_term_months,
+            credit_score=applicant.credit_score,
+            on_time_payments_pct=applicant.on_time_payments_percent,
+        )
+        
+        logger.info(
+            f"Offer for {applicant.applicant_id}: "
+            f"reliability={reliability_score}, status={offer.offer_status}, "
+            f"amount={offer.offer_amount:,.0f}"
+        )
+
         # Persist to database
         try:
             # Create Application record
@@ -354,28 +394,6 @@ async def score_applicant(applicant: ApplicantInput, db: Session = Depends(get_d
             logger.error(f"Failed to persist to database: {db_error}")
             db.rollback()
             # Continue returning response even if persistence fails
-
-        # ============================================================
-        # OFFER CALCULATION
-        # ============================================================
-        reliability_score = max(0, min(100, 100 - risk_score))
-        months_to_sell = getattr(applicant, 'months_to_sell', applicant.lease_term_months)
-        
-        offer = calculate_offer(
-            monthly_rent=applicant.monthly_rent,
-            months_to_sell=months_to_sell,
-            reliability_score=reliability_score,
-            property_type=applicant.property_type,
-            lease_term_months=applicant.lease_term_months,
-            credit_score=applicant.credit_score,
-            on_time_payments_pct=applicant.on_time_payments_percent,
-        )
-        
-        logger.info(
-            f"Offer for {applicant.applicant_id}: "
-            f"reliability={reliability_score}, status={offer.offer_status}, "
-            f"amount=₹{offer.offer_amount:,.0f}"
-        )
 
         return ScoringResponse(
             success=True,
