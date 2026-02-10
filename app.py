@@ -361,6 +361,7 @@ async def score_applicant(applicant: ApplicantInput, db: Session = Depends(get_d
         reliability_score = max(0, min(100, 100 - risk_score))
         months_to_sell = getattr(applicant, 'months_to_sell', applicant.lease_term_months)
         
+        income_ratio = applicant.monthly_income / applicant.monthly_rent if applicant.monthly_rent > 0 else 10
         offer = calculate_offer(
             monthly_rent=applicant.monthly_rent,
             months_to_sell=months_to_sell,
@@ -369,6 +370,7 @@ async def score_applicant(applicant: ApplicantInput, db: Session = Depends(get_d
             lease_term_months=applicant.lease_term_months,
             credit_score=applicant.credit_score,
             on_time_payments_pct=applicant.on_time_payments_percent,
+            income_ratio=income_ratio,
         )
         
         logger.info(
@@ -412,11 +414,17 @@ def calibrate_probability(raw_prob: float, features: dict) -> float:
     
     The model was trained on synthetic data that may overestimate default risk.
     This calibration:
-    1. Applies a sigmoid compression to reduce extreme predictions
+    1. Uses a CONTINUOUS income/rent curve (no step functions) for smooth sensitivity
     2. Gives credit to applicants with strong financial profiles
+    3. Penalizes applicants with very low income relative to rent
     
-    The goal is to make the model more lenient for borderline cases
-    while still being strict for truly risky applicants.
+    Income/rent ratio is the dominant factor. The continuous curve ensures
+    every dollar of income change produces a measurable score difference.
+    
+    Boundaries:
+    - Below 1.5x: penalty applied (income too low for rent)
+    - 1.5x to 6.0x: continuous improvement curve
+    - Above 6.0x: capped (no further benefit)
     """
     
     # Calculate financial strength indicators
@@ -425,19 +433,33 @@ def calibrate_probability(raw_prob: float, features: dict) -> float:
     credit = features['credit_score']
     income_ratio = income / rent if rent > 0 else 10
     
-    # Financial strength score (0-1)
-    # Higher = stronger financial profile = more leniency
+    # ---- Income penalty for very low income/rent ratios ----
+    # If income barely covers rent, ADD risk to the raw probability
+    income_penalty = 0.0
+    if income_ratio < 2.0:
+        # Linear penalty: +0.08 at ratio=1.0, tapering to 0 at ratio=2.0
+        income_penalty = 0.08 * max(0, (2.0 - income_ratio) / 1.0)
+        income_penalty = min(0.08, income_penalty)  # Cap at +8%
+    
+    penalized_prob = min(0.99, raw_prob + income_penalty)
+    
+    # ---- Financial strength score (0 to 0.6, continuous) ----
     financial_strength = 0.0
     
-    # Income ratio bonus (3x+ income is strong)
-    if income_ratio >= 5:
-        financial_strength += 0.3  # Very strong
-    elif income_ratio >= 4:
-        financial_strength += 0.2  # Strong
-    elif income_ratio >= 3:
-        financial_strength += 0.1  # Adequate
+    # Income ratio bonus: CONTINUOUS curve over [1.5, 6.0] → [0, 0.35]
+    # Every fractional change in income/rent ratio produces a different score
+    INCOME_FLOOR = 1.5
+    INCOME_CAP = 6.0
+    MAX_INCOME_BONUS = 0.35
     
-    # Credit score bonus
+    if income_ratio >= INCOME_CAP:
+        financial_strength += MAX_INCOME_BONUS
+    elif income_ratio > INCOME_FLOOR:
+        # Linear interpolation: (ratio - 1.5) / (6.0 - 1.5) * 0.35
+        financial_strength += MAX_INCOME_BONUS * (income_ratio - INCOME_FLOOR) / (INCOME_CAP - INCOME_FLOOR)
+    # else: ratio <= 1.5 → no income bonus (0)
+    
+    # Credit score bonus (unchanged)
     if credit >= 750:
         financial_strength += 0.2  # Excellent
     elif credit >= 700:
@@ -447,22 +469,21 @@ def calibrate_probability(raw_prob: float, features: dict) -> float:
     elif credit >= 620:
         financial_strength += 0.05  # Subprime but not terrible
     
-    # Verification bonus
+    # Verification bonus (unchanged)
     if features['employment_verified'] and features['income_verified']:
         financial_strength += 0.1  # Both verified
     elif features['employment_verified'] or features['income_verified']:
         financial_strength += 0.05  # One verified
     
-    # Cap financial strength at 0.5 (max reduction)
-    financial_strength = min(0.5, financial_strength)
+    # Cap financial strength at 0.6 (raised from 0.5 to widen range)
+    financial_strength = min(0.6, financial_strength)
     
     # Apply leniency reduction based on financial strength
-    # Strong profiles get probability reduced, weak profiles stay same
-    calibrated = raw_prob * (1.0 - financial_strength * 0.6)
+    # Multiplier 0.7 (raised from 0.6) so income changes have ~2x more effect
+    calibrated = penalized_prob * (1.0 - financial_strength * 0.7)
     
-    # Also apply general scaling to be more lenient
-    # Compress the probability range: 0-1 becomes roughly 0-0.8
-    calibrated = calibrated * 0.85
+    # No global compression — removed the old ×0.85 that flattened all differences
+    # The continuous curve + penalty above already handles the full range
     
     # Ensure we don't go below a minimum (maintain some risk assessment)
     calibrated = max(0.05, calibrated)
@@ -610,28 +631,33 @@ def apply_first_time_renter_adjustment(probability: float, features: dict) -> tu
     employment_verified = features['employment_verified']
     income_verified = features['income_verified']
     
-    # Strong first-time renter criteria
-    strong_profile = (
-        credit >= 650 and
-        income_ratio >= 3.5 and
-        (employment_verified or income_verified)
-    )
+    # Continuous first-time renter adjustment based on income ratio and credit
+    # Instead of two discrete steps, interpolate the reduction for smoother sensitivity
     
-    very_strong_profile = (
-        credit >= 700 and
-        income_ratio >= 5 and
-        employment_verified and
-        income_verified
-    )
+    # Income component: 0 at ratio<=2.0, scaling to 1.0 at ratio>=5.0
+    income_factor = max(0.0, min(1.0, (income_ratio - 2.0) / 3.0))
     
-    if very_strong_profile:
-        # Very strong first-time renter: reduce probability by 15%
-        adjusted = max(0.05, probability - 0.15)
-        return adjusted, "First-time renter with excellent profile (700+ credit, 5x income) - reduced risk."
-    elif strong_profile:
-        # Strong first-time renter: reduce probability by 8%
-        adjusted = max(0.10, probability - 0.08)
-        return adjusted, "First-time renter with good profile - moderate risk reduction."
+    # Credit component: 0 at credit<=600, scaling to 1.0 at credit>=750
+    credit_factor = max(0.0, min(1.0, (credit - 600) / 150.0))
+    
+    # Verification component: 0, 0.5, or 1.0
+    verification_factor = 0.0
+    if employment_verified and income_verified:
+        verification_factor = 1.0
+    elif employment_verified or income_verified:
+        verification_factor = 0.5
+    
+    # Combined strength: weighted average (income matters most)
+    combined_strength = (income_factor * 0.5) + (credit_factor * 0.35) + (verification_factor * 0.15)
+    
+    # Maximum reduction: -0.15 for perfect profile, scaling down to 0 for weak
+    max_reduction = 0.15
+    reduction = combined_strength * max_reduction
+    
+    if reduction > 0.02:  # Only apply if meaningful
+        floor = 0.05 if combined_strength >= 0.7 else 0.10
+        adjusted = max(floor, probability - reduction)
+        return adjusted, f"First-time renter adjustment: -{reduction:.1%} (strength={combined_strength:.2f})."
     
     return probability, None
 

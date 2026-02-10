@@ -66,6 +66,15 @@ def _lease_term_adjustment(months: int) -> float:
         return 0.03   # Short lease = more risk
 
 
+# Minimum income-to-rent ratio to qualify for an offer
+MIN_INCOME_RATIO = 1.5
+
+# Income ratio range for continuous discount adjustment
+INCOME_RATIO_FLOOR = 1.5
+INCOME_RATIO_CAP = 6.0
+MAX_INCOME_DISCOUNT_BONUS = 0.06  # Up to 6% better rate for high income
+
+
 def calculate_offer(
     monthly_rent: float,
     months_to_sell: int,
@@ -74,6 +83,7 @@ def calculate_offer(
     lease_term_months: int = 12,
     credit_score: int = 650,
     on_time_payments_pct: float = 90.0,
+    income_ratio: float = 3.0,
 ) -> OfferBreakdown:
     """
     Calculate a cash offer for purchasing a rental income stream.
@@ -86,13 +96,28 @@ def calculate_offer(
         lease_term_months: Remaining months on tenant's lease
         credit_score: Tenant's credit score
         on_time_payments_pct: Tenant's on-time payment percentage
+        income_ratio: Tenant's monthly_income / monthly_rent ratio
 
     Returns:
         OfferBreakdown with full offer details
     """
     gross_value = monthly_rent * months_to_sell
 
-    # Check minimum threshold
+    # Check income ratio hard floor — tenant can't afford the rent
+    if income_ratio < MIN_INCOME_RATIO:
+        logger.info(f"Income ratio {income_ratio:.2f} below minimum {MIN_INCOME_RATIO} - NO_OFFER")
+        return OfferBreakdown(
+            offer_amount=0,
+            gross_rental_value=gross_value,
+            discount_rate=0,
+            discount_amount=0,
+            monthly_rent=monthly_rent,
+            months=months_to_sell,
+            reliability_score=reliability_score,
+            offer_status="NO_OFFER",
+        )
+
+    # Check minimum reliability threshold
     if reliability_score < MIN_RELIABILITY_THRESHOLD:
         logger.info(f"Reliability {reliability_score} below threshold {MIN_RELIABILITY_THRESHOLD} - NO_OFFER")
         return OfferBreakdown(
@@ -135,6 +160,16 @@ def calculate_offer(
         base_discount -= 0.01  # Small bonus for larger deals
     elif months_to_sell <= 3:
         base_discount += 0.02  # Premium for very short term
+
+    # 7. Income ratio adjustment — CONTINUOUS curve over [1.5, 6.0]
+    # Higher income/rent ratio = lower discount = better offer for landlord
+    if income_ratio >= INCOME_RATIO_CAP:
+        income_adj = -MAX_INCOME_DISCOUNT_BONUS  # Full 6% bonus
+    elif income_ratio > INCOME_RATIO_FLOOR:
+        income_adj = -MAX_INCOME_DISCOUNT_BONUS * (income_ratio - INCOME_RATIO_FLOOR) / (INCOME_RATIO_CAP - INCOME_RATIO_FLOOR)
+    else:
+        income_adj = 0.0  # No bonus (already gated by MIN_INCOME_RATIO above)
+    base_discount += income_adj
 
     # Cap discount rate
     final_discount = max(0.05, min(MAX_DISCOUNT_RATE, base_discount))
