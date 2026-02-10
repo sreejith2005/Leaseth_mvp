@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
-import { ArrowLeft, ArrowRight, User, Wallet, Briefcase, Home, History, HelpCircle, Building2 } from 'lucide-react'
+import { ArrowLeft, ArrowRight, User, Wallet, Briefcase, History, HelpCircle, Building2 } from 'lucide-react'
 import Button from '../components/ui/Button'
 import { Input, Select, Checkbox, Slider } from '../components/ui/Input'
 import { FormRow } from '../components/FormSection'

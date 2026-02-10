@@ -22,6 +22,7 @@ const baseApplicantSchema = z.object({
   property_type: z.enum(['apartment', 'house', 'condo', 'townhouse', 'studio']),
   location: z.string().min(1, 'Location is required'),
   property_address: z.string().optional(),
+  currency: z.string().optional(),
 })
 
 // Full schema with cross-field validation
@@ -57,6 +58,7 @@ const fieldSchemas: Record<string, z.ZodTypeAny> = {
   property_type: z.enum(['apartment', 'house', 'condo', 'townhouse', 'studio']),
   location: z.string().min(1, 'Location is required'),
   property_address: z.string().optional(),
+  currency: z.string().optional(),
 }
 
 export function validateField(
